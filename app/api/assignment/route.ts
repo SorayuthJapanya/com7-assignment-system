@@ -30,6 +30,9 @@ export async function GET(request: NextRequest) {
     const userId = authUser.id;
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
+    const status = searchParams.get("status") || "all";
+    const type = searchParams.get("type") || "all";
+    const myAssignments = searchParams.get("myAssignments") === "true";
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
     const skip = (page - 1) * limit;
@@ -46,8 +49,25 @@ export async function GET(request: NextRequest) {
     }
 
     // Add userId filter
-    if (userId && authUser.role !== "SUPER_ADMIN") {
+    if (userId && myAssignments) {
       where.userId = userId;
+    }
+
+    // Add status filter
+    if (status !== "all") {
+      if (status === "not-submit") {
+        where.submissionUrl = "";
+      } else if (status === "pending") {
+        where.submissionUrl = { not: "" };
+        where.status = "Pending";
+      } else {
+        where.status = status;
+      }
+    }
+
+    // Add type filter
+    if (type !== "all") {
+      where.type = type;
     }
 
     // Get total count for pagination

@@ -49,6 +49,8 @@ export async function uploadFile(
           return;
         }
 
+        console.log(result);
+
         resolve({
           url: result.secure_url,
           public_id: result.public_id,

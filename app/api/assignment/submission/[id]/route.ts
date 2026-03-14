@@ -74,6 +74,8 @@ export async function PUT(
       );
     }
 
+    console.log(uploadResult);
+
     // Update assignment with submission details
     const updatedAssignment = await prisma.assignment.update({
       where: { id: assignmentId },

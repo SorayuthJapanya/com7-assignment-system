@@ -53,7 +53,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     // isAuthorize
@@ -67,7 +67,7 @@ export async function PUT(
     }
 
     const authUser = authResult.user!;
-    const assignmentId = params.id;
+    const assignmentId = (await params).id;
 
     // Get existing assignment
     const existingAssignment = await prisma.assignment.findUnique({
