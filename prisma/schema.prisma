@@ -39,6 +39,7 @@ model Assignment {
   type          Type     @default(Individual)
   createdBy     String   @default("")
   assignTo      String   @default("")
+  members       String[] @default([])
   reward        Int      @default(0)
   deadline      DateTime @default(now())
   submissionUrl String   @default("")

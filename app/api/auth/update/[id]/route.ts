@@ -17,19 +17,11 @@ export async function PUT(
       );
     }
 
-    const authUser = authResult.user!; // We know user exists if error is null
-
-    // Check if user is SUPER_ADMIN
-    if (authUser.role !== "SUPER_ADMIN") {
-      return NextResponse.json(
-        { error: "Forbidden. Only SUPER_ADMIN can update users." },
-        { status: 403 },
-      );
-    }
+    const authUser = authResult.user!;
 
     // Get request body
     const body = await request.json();
-    const { nickname, role } = body;
+    const { nickname, email, role } = body;
 
     // Validate input
     if (!nickname && !role) {
@@ -50,17 +42,17 @@ export async function PUT(
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
       where: { id: (await params).id },
-      select: { id: true, role: true },
+      select: { id: true, email: true, role: true },
     });
 
     if (!existingUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Prevent SUPER_ADMIN from demoting themselves
-    if (existingUser.id === authUser.id && role === "STAFF") {
+    // Cannot change other user if you are not SUPER_ADMIN
+    if (existingUser.id === authUser.id && authUser.role !== "SUPER_ADMIN") {
       return NextResponse.json(
-        { error: "Cannot change your own role from SUPER_ADMIN" },
+        { error: "Cannot change other user if you are not SUPER_ADMIN" },
         { status: 403 },
       );
     }
@@ -70,6 +62,7 @@ export async function PUT(
       where: { id: (await params).id },
       data: {
         ...(nickname && { nickname }),
+        ...(email && { email }),
         ...(role && { role: role as "SUPER_ADMIN" | "STAFF" }),
       },
       select: {

@@ -2,7 +2,7 @@
 
 import Header from "@/components/header";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useState } from "react";
 import { IFilteredAssignment } from "@/types/assignment";
 import { useGetAssignments } from "@/hooks/use-assignment";
@@ -10,7 +10,6 @@ import AssignmentFilter from "@/components/table/assignment-filter";
 import Pagination from "@/components/pagination";
 import AssignmentTable from "@/components/assignment-table";
 import Link from "next/link";
-import { Spinner } from "@/components/ui/spinner";
 
 export default function ManageAssignmentPage() {
   const [filtered, setFiltered] = useState<IFilteredAssignment>({
@@ -84,9 +83,7 @@ export default function ManageAssignmentPage() {
                   )}
               </>
             ) : (
-              <div className="w-full bg-card border rounded-lg p-8 flex items-center justify-center text-muted-foreground">
-                No assignments found.
-              </div>
+              <p className="text-muted-foreground">No assignments found</p>
             )}
           </>
         )}

@@ -44,13 +44,13 @@ export const UserAssignmentStatusChart = ({
   dashboardData: UserAssignmentStatus[];
 }) => {
   return (
-    <Card className="flex flex-col rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all duration-200">
+    <Card className="w-full flex flex-col rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all duration-200">
       <CardHeader className="items-center pb-0">
         <CardTitle>User Assignment Status</CardTitle>
         <CardDescription>Number of assignments per user</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 pb-0">
-        <ChartContainer config={chartConfig} className="max-h-64 w-9/10">
+        <ChartContainer config={chartConfig} className="max-h-64 w-full">
           <BarChart
             accessibilityLayer
             data={dashboardData}

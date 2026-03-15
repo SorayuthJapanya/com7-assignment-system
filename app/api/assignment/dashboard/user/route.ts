@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
             lte: endDate,
           },
         },
-        _count: {
+        _sum: {
           finalScore: true,
         },
       }),
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
             AND "createdAt" <= ${endDate}
         )
         SELECT 
-          'Pending' as status,
+          'Pending' as name,
           COUNT(*) as value,
           ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
         FROM "Assignment" 
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
         UNION ALL
         
         SELECT 
-          'Approved' as status,
+          'Approved' as name,
           COUNT(*) as value,
           ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
         FROM "Assignment" 
@@ -149,7 +149,7 @@ export async function GET(request: NextRequest) {
         UNION ALL
         
         SELECT 
-          'Rejected' as status,
+          'Rejected' as name,
           COUNT(*) as value,
           ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
         FROM "Assignment" 
@@ -168,7 +168,7 @@ export async function GET(request: NextRequest) {
         totalAssignments,
         totalApproved,
         totalRejected,
-        totalScore: totalScore._count.finalScore || 0,
+        totalScore: totalScore._sum.finalScore || 0,
       },
       charts: {
         // Chart 1: Monthly Trend
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
           title: "Assignment Status Distribution",
           type: "pie",
           data: statusDistributionData.map((item) => ({
-            status: item.status,
+            name: item.name,
             value: Number(item.value || 0),
             percentage: Number(item.percentage || 0),
           })),

@@ -6,6 +6,7 @@ import {
   IFilteredAssignment,
   ReviewAssignmentRequest,
   SubmissionAssignmentResponse,
+  UpdateAssignmentRequest,
 } from "@/types/assignment";
 
 export const getAssignments = async ({
@@ -71,6 +72,14 @@ export const reviewAssignment = async (
     `/api/assignment/review/${id}`,
     data,
   );
+  return response.data;
+};
+
+export const updateAssignment = async (
+  id: string,
+  data: UpdateAssignmentRequest,
+): Promise<{ message: string }> => {
+  const response = await axiosInstance.put(`/api/assignment/${id}`, data);
   return response.data;
 };
 

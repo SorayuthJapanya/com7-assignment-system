@@ -3,12 +3,15 @@
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Check, ChevronsUpDown, X } from "lucide-react";
+import { Check, ChevronsUpDown, X, CalendarIcon } from "lucide-react";
 
 import {
   assignmentSchema,
   type AssignmentFormValues,
-} from "@/schemas/assignment-schems";
+} from "@/schemas/assignment-schema";
+import { format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -35,18 +38,29 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import Swal from "sweetalert2";
+import { useCreateAssignment } from "@/hooks/use-assignment";
+import { useRouter } from "next/navigation";
 
-// Mock data for assignees - replace with actual API data fetching
-const MOCK_USERS = [
-  { label: "Student 1", value: "student_1" },
-  { label: "Student 2", value: "student_2" },
-  { label: "Student 3", value: "student_3" },
-  { label: "Group A", value: "group_a" },
-  { label: "Group B", value: "group_b" },
-];
+interface AddAssignmentFormProps {
+  allUsernames: string[];
+}
 
-export default function AddAssignmentForm() {
+export default function AddAssignmentForm({
+  allUsernames,
+}: AddAssignmentFormProps) {
   const [open, setOpen] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
+  const router = useRouter();
+
+  const { mutateAsync: createAssignment } = useCreateAssignment();
 
   const form = useForm<AssignmentFormValues>({
     resolver: zodResolver(assignmentSchema),
@@ -60,10 +74,28 @@ export default function AddAssignmentForm() {
     },
   });
 
-  function onSubmit(data: AssignmentFormValues) {
-    console.log("Form submitted:", data);
-    // TODO: Handle submission (e.g., API call)
-  }
+  const onSubmit = async (data: AssignmentFormValues) => {
+    const result = await Swal.fire({
+      icon: "question",
+      title: "Create new assignment?",
+      text: "Once created, you cannot undo this action.",
+      showCancelButton: true,
+      confirmButtonText: "Yes, create it!",
+    });
+
+    if (result.isConfirmed) {
+      Swal.fire({
+        title: "Adding...",
+        text: "Please wait",
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        },
+      });
+      await createAssignment(data);
+      router.push("/assignment/manage");
+    }
+  };
 
   return (
     <Form {...form}>
@@ -111,18 +143,18 @@ export default function AddAssignmentForm() {
               <FormItem>
                 <FormLabel>Type</FormLabel>
                 <FormControl>
-                  <div className="relative">
-                    <select
-                      className={cn(
-                        "flex h-9 w-full appearance-none items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-                      )}
-                      {...field}
-                    >
-                      <option value="Individual">Individual</option>
-                      <option value="Group">Group</option>
-                    </select>
-                    <ChevronsUpDown className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50 pointer-events-none" />
-                  </div>
+                  <Select
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Individual">Individual</SelectItem>
+                      <SelectItem value="Group">Group</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -156,26 +188,96 @@ export default function AddAssignmentForm() {
             control={form.control}
             name="deadline"
             render={({ field }) => {
-              const dateValue =
-                field.value && !isNaN(field.value.getTime())
-                  ? new Date(
-                      field.value.getTime() -
-                        field.value.getTimezoneOffset() * 60000,
-                    )
-                      .toISOString()
-                      .slice(0, 16)
-                  : "";
+              const handleDateSelect = (date: Date | undefined) => {
+                if (date) {
+                  const newDate =
+                    field.value && !isNaN(field.value.getTime())
+                      ? new Date(field.value)
+                      : new Date();
+                  newDate.setFullYear(
+                    date.getFullYear(),
+                    date.getMonth(),
+                    date.getDate(),
+                  );
+                  field.onChange(newDate);
+                }
+              };
+
+              const handleTimeChange = (
+                e: React.ChangeEvent<HTMLInputElement>,
+              ) => {
+                const [hours, minutes] = e.target.value.split(":");
+                const newDate =
+                  field.value && !isNaN(field.value.getTime())
+                    ? new Date(field.value)
+                    : new Date();
+                newDate.setHours(
+                  parseInt(hours || "0", 10),
+                  parseInt(minutes || "0", 10),
+                  0,
+                );
+                field.onChange(newDate);
+              };
 
               return (
                 <FormItem className="flex flex-col">
                   <FormLabel>Deadline</FormLabel>
                   <FormControl>
-                    <Input
-                      type="datetime-local"
-                      className="w-full"
-                      value={dateValue}
-                      onChange={(e) => field.onChange(new Date(e.target.value))}
-                    />
+                    <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            (!field.value || isNaN(field.value.getTime())) &&
+                              "text-muted-foreground",
+                          )}
+                          variant="outline"
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {field.value && !isNaN(field.value.getTime()) ? (
+                            `${format(field.value, "PPP")} at ${format(
+                              field.value,
+                              "HH:mm",
+                            )}`
+                          ) : (
+                            <span>Pick a date and time</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-auto p-0">
+                        <div className="divide-y overflow-hidden bg-background">
+                          <Calendar
+                            mode="single"
+                            onSelect={handleDateSelect}
+                            selected={
+                              field.value && !isNaN(field.value.getTime())
+                                ? field.value
+                                : undefined
+                            }
+                            captionLayout="dropdown"
+                            defaultMonth={
+                              field.value && !isNaN(field.value.getTime())
+                                ? field.value
+                                : new Date()
+                            }
+                          />
+                          <div className="space-y-2 p-4">
+                            <Label htmlFor="time">Time</Label>
+                            <Input
+                              className="w-full"
+                              id="time"
+                              onChange={handleTimeChange}
+                              type="time"
+                              value={
+                                field.value && !isNaN(field.value.getTime())
+                                  ? format(field.value, "HH:mm")
+                                  : "12:00"
+                              }
+                            />
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </FormControl>
                   <FormDescription>
                     Select the due date and time
@@ -194,7 +296,7 @@ export default function AddAssignmentForm() {
               <FormItem className="flex flex-col">
                 <FormLabel>Assign To</FormLabel>
                 <Popover open={open} onOpenChange={setOpen}>
-                  <PopoverTrigger asChild>
+                  <PopoverTrigger asChild className="hover:bg-accent/5">
                     <FormControl>
                       <Button
                         variant="outline"
@@ -205,19 +307,19 @@ export default function AddAssignmentForm() {
                         {field.value?.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
                             {field.value.map((val) => {
-                              const selectedUser = MOCK_USERS.find(
-                                (u) => u.value === val,
+                              const selectedUser = allUsernames.find(
+                                (u) => u === val,
                               );
                               return (
                                 <div
                                   key={val}
-                                  className="flex items-center gap-1 bg-secondary text-secondary-foreground px-2 py-0.5 rounded-sm text-xs"
+                                  className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-0.5 rounded-sm text-xs font-medium border-[0.5px] border-primary/50"
                                 >
-                                  {selectedUser?.label || val}
+                                  {selectedUser || val}
                                   <div
                                     role="button"
                                     tabIndex={0}
-                                    className="hover:bg-muted rounded-full p-0.5 cursor-pointer ml-1"
+                                    className="rounded-full p-0.5 cursor-pointer ml-1"
                                     onKeyDown={(e) => {
                                       if (e.key === "Enter") {
                                         field.onChange(
@@ -257,24 +359,20 @@ export default function AddAssignmentForm() {
                       <CommandEmpty>No assignees found.</CommandEmpty>
                       <CommandList>
                         <CommandGroup>
-                          {MOCK_USERS.map((user) => (
+                          {allUsernames.map((user) => (
                             <CommandItem
-                              key={user.value}
-                              value={user.label}
+                              key={user}
+                              value={user}
                               onSelect={() => {
-                                const isSelected = field.value?.includes(
-                                  user.value,
-                                );
+                                const isSelected = field.value?.includes(user);
                                 if (isSelected) {
                                   field.onChange(
-                                    field.value.filter(
-                                      (val) => val !== user.value,
-                                    ),
+                                    field.value.filter((val) => val !== user),
                                   );
                                 } else {
                                   field.onChange([
                                     ...(field.value || []),
-                                    user.value,
+                                    user,
                                   ]);
                                 }
                               }}
@@ -282,12 +380,12 @@ export default function AddAssignmentForm() {
                               <Check
                                 className={cn(
                                   "mr-2 h-4 w-4",
-                                  field.value?.includes(user.value)
+                                  field.value?.includes(user)
                                     ? "opacity-100"
                                     : "opacity-0",
                                 )}
                               />
-                              {user.label}
+                              {user}
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -301,7 +399,7 @@ export default function AddAssignmentForm() {
           />
         </div>
 
-        <Button type="submit" className="w-full sm:w-auto">
+        <Button type="submit" className="w-full sm:w-auto cursor-pointer">
           Create Assignment
         </Button>
       </form>

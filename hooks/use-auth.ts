@@ -1,7 +1,22 @@
-import { login, logout, register } from "@/services/auth-services";
+import {
+  addUser,
+  deleteUser,
+  getUsers,
+  login,
+  logout,
+  register,
+  updateUser,
+} from "@/services/auth-services";
 import { AxiosErrorResponse } from "@/types";
-import { LoginRequest, LoginResponse, RegisterRequest } from "@/types/auth";
-import { useMutation } from "@tanstack/react-query";
+import {
+  IUser,
+  LoginRequest,
+  LoginResponse,
+  RegisterRequest,
+  UpdateRequest,
+  UpdateResponse,
+} from "@/types/auth";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
 
@@ -25,13 +40,14 @@ export const useLogin = () => {
       Swal.fire({
         icon: "error",
         title: "Login Failed",
-        text: error?.response?.data?.message || "Something went wrong",
+        text: error?.response?.data?.error || "Something went wrong",
       });
     },
   });
 };
 
 export const useRegister = () => {
+  const queryClient = useQueryClient();
   return useMutation<
     LoginResponse,
     AxiosError<AxiosErrorResponse>,
@@ -39,6 +55,7 @@ export const useRegister = () => {
   >({
     mutationFn: register,
     onSuccess: async (res) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
       await Swal.fire({
         icon: "success",
         title: res.message || "Registration Successful",
@@ -51,7 +68,7 @@ export const useRegister = () => {
       Swal.fire({
         icon: "error",
         title: "Registration Failed",
-        text: error?.response?.data?.message || "Something went wrong",
+        text: error?.response?.data?.error || "Something went wrong",
       });
     },
   });
@@ -76,11 +93,113 @@ export const useLogout = () => {
         Swal.fire({
           icon: "error",
           title: "Logout Failed",
-          text: error?.response?.data?.message || "Something went wrong",
+          text: error?.response?.data?.error || "Something went wrong",
           timer: 2000,
           showConfirmButton: false,
         });
       },
     },
   );
+};
+
+export const useAddUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation<
+    LoginResponse,
+    AxiosError<AxiosErrorResponse>,
+    RegisterRequest
+  >({
+    mutationFn: addUser,
+    onSuccess: async (res) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      await Swal.fire({
+        icon: "success",
+        title: res.message || "Add User Successful",
+        text: "The user has been added successfully. 😊",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+
+    onError: (error) => {
+      Swal.fire({
+        icon: "error",
+        title: "Add user Failed",
+        text: error?.response?.data?.error || "Something went wrong",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+  });
+};
+
+export const useGetUsers = ({ search }: { search?: string }) => {
+  return useQuery<{ data: IUser[] }>({
+    queryKey: ["users", search],
+    queryFn: () => getUsers(search),
+  });
+};
+
+export const useUpdateUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation<
+    UpdateResponse,
+    AxiosError<AxiosErrorResponse>,
+    { id: string; data: UpdateRequest }
+  >({
+    mutationFn: ({ id, data }) => updateUser(id, data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      Swal.fire({
+        icon: "success",
+        title: res.message || "User updated successfully",
+        text: "The user has been updated successfully. 😊",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+
+    onError: (error) => {
+      Swal.fire({
+        icon: "error",
+        title: "Update Failed",
+        text: error?.response?.data?.error || "Something went wrong",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+  });
+};
+
+export const useDeleteUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation<
+    {
+      message: string;
+    },
+    AxiosError<AxiosErrorResponse>,
+    { id: string }
+  >({
+    mutationFn: ({ id }) => deleteUser(id),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      Swal.fire({
+        icon: "success",
+        title: res.message || "User deleted successfully",
+        text: "The user has been deleted successfully. 😊",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+
+    onError: (error) => {
+      Swal.fire({
+        icon: "error",
+        title: "Delete Failed",
+        text: error?.response?.data?.error || "Something went wrong",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+  });
 };

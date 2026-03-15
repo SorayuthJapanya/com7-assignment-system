@@ -31,8 +31,9 @@ export interface RegisterRequest {
 }
 
 export interface UpdateRequest {
-  nickname: string;
-  role: string;
+  nickname?: string;
+  email?: string;
+  role?: string;
 }
 
 export interface UpdateResponse {

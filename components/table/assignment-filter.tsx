@@ -35,7 +35,7 @@ export default function AssignmentFilter({
   total = 0,
 }: AssignmentFilterProps) {
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div className="flex items-center justify-center sm:justify-end gap-2">
       {/* Search */}
       <InputGroup>
         <InputGroupInput

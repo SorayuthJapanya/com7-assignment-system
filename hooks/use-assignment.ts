@@ -5,6 +5,7 @@ import {
   getAssignments,
   reviewAssignment,
   submissionAssignment,
+  updateAssignment,
 } from "@/services/assignment-services";
 import { AxiosErrorResponse } from "@/types";
 import {
@@ -13,6 +14,7 @@ import {
   GetAssignmentsResponse,
   IFilteredAssignment,
   ReviewAssignmentRequest,
+  UpdateAssignmentRequest,
 } from "@/types/assignment";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
@@ -64,7 +66,39 @@ export const useCreateAssignment = () => {
       Swal.fire({
         icon: "error",
         title: "Assignment creation failed",
-        text: error?.response?.data?.message || "Something went wrong",
+        text: error?.response?.data?.error || "Something went wrong",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+  });
+};
+
+export const useUpdateAssignment = () => {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { message: string },
+    AxiosError<AxiosErrorResponse>,
+    { id: string; data: UpdateAssignmentRequest }
+  >({
+    mutationFn: ({ id, data }) => updateAssignment(id, data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({
+        queryKey: ["assignment"],
+      });
+      Swal.fire({
+        icon: "success",
+        title: res.message || "Assignment updated successfully",
+        text: "You have successfully updated an assignment. 😊",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error) => {
+      Swal.fire({
+        icon: "error",
+        title: "Assignment update failed",
+        text: error?.response?.data?.error || "Something went wrong",
         timer: 2000,
         showConfirmButton: false,
       });
@@ -101,7 +135,7 @@ export const useReviewAssignment = () => {
       Swal.fire({
         icon: "error",
         title: "Assignment review failed",
-        text: error?.response?.data?.message || "Something went wrong",
+        text: error?.response?.data?.error || "Something went wrong",
         timer: 2000,
         showConfirmButton: false,
       });
@@ -138,7 +172,7 @@ export const useSubmissionAssignment = () => {
       Swal.fire({
         icon: "error",
         title: "Assignment submission failed",
-        text: error?.response?.data?.message || "Something went wrong",
+        text: error?.response?.data?.error || "Something went wrong",
         timer: 2000,
         showConfirmButton: false,
       });
@@ -172,7 +206,7 @@ export const useDeleteAssignment = () => {
       Swal.fire({
         icon: "error",
         title: "Assignment deletion failed",
-        text: error?.response?.data?.message || "Something went wrong",
+        text: error?.response?.data?.error || "Something went wrong",
         timer: 2000,
         showConfirmButton: false,
       });

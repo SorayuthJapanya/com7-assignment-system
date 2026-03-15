@@ -64,11 +64,19 @@ export default function AssignmentCard({
                 )}
                 <span>{assignment.type}</span>
               </div>
+              {assignment.type === "Group" && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/40 border px-2.5 py-1 rounded-md">
+                  <span className="font-medium text-foreground">Members:</span>
+                  {assignment.members.join(", ")}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap">
             <Coins className="w-3 h-3" />
-            {assignment.reward}
+            {assignment.finalScore
+              ? `Your Score: ${assignment.finalScore}`
+              : `Reward: ${assignment.reward}`}
           </div>
         </div>
       </CardHeader>

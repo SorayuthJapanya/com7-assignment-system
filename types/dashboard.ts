@@ -78,7 +78,7 @@ export interface UserMonthlyTrend {
 }
 
 export interface UserStatusDistribution {
-  status: string;
+  name: string;
   value: number;
   percentage: number;
 }

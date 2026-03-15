@@ -17,6 +17,7 @@ export interface IAssignment {
   type: "Individual" | "Group";
   createdBy: string;
   assignTo: string;
+  members: string[];
   reward: number;
   deadline: Date;
   submissionUrl: string;
@@ -52,6 +53,13 @@ export interface ReviewAssignmentRequest {
   status: string;
 }
 
+export interface UpdateAssignmentRequest {
+  title?: string;
+  description?: string;
+  reward?: number;
+  deadline?: Date;
+}
+
 export interface SubmissionAssignmentResponse {
   message: string;
   assignment: IAssignment;
@@ -60,4 +68,14 @@ export interface SubmissionAssignmentResponse {
     size: number;
     format: string;
   };
+}
+
+export interface INewAssignmentTemplate {
+    username: string;
+    type: string;
+    title: string;
+    description: string;
+    reward: number;
+    formattedDeadline: string;
+    url: string;
 }

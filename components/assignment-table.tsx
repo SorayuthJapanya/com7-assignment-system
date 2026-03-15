@@ -14,6 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Edit, Trash2 } from "lucide-react";
 import Swal from "sweetalert2";
 import { useDeleteAssignment } from "@/hooks/use-assignment";
+import { useState } from "react";
+import ManageAssignment from "@/components/dialog/manage-assignment";
+import EditAssignment from "./dialog/edit-assignment";
 
 interface AssignmentTableProps {
   assignments: IAssignment[];
@@ -21,6 +24,11 @@ interface AssignmentTableProps {
 
 export default function AssignmentTable({ assignments }: AssignmentTableProps) {
   const { mutateAsync: deleteAssignment } = useDeleteAssignment();
+  const [selectedAssignment, setSelectedAssignment] =
+    useState<IAssignment | null>(null);
+  const [editAssignment, setEditAssignment] = useState<IAssignment | null>(
+    null,
+  );
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -37,11 +45,13 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
     }
   };
 
-  const handleEdit = (id: string) => {
-    console.log(id);
+  const handleEdit = (assignment: IAssignment) => {
+    setSelectedAssignment(null);
+    setEditAssignment(assignment);
   };
 
   const handleDelete = async (id: string) => {
+    setSelectedAssignment(null);
     const result = await Swal.fire({
       icon: "question",
       title: "Are you sure?",
@@ -52,7 +62,7 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
     if (result.isConfirmed) {
       Swal.fire({
         title: "Deleting...",
-        text: "Please wait...",
+        text: "Please wait",
         allowOutsideClick: false,
         didOpen: () => {
           Swal.showLoading();
@@ -61,81 +71,112 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
       await deleteAssignment({ id });
     }
   };
+
   return (
-    <div className="rounded-md border bg-card">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[50px] text-center">No.</TableHead>
-            <TableHead>Title</TableHead>
-            <TableHead className="hidden md:table-cell">Description</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Created By</TableHead>
-            <TableHead>Assign To</TableHead>
-            <TableHead className="text-center">Deadline</TableHead>
-            <TableHead className="text-center">Status</TableHead>
-            <TableHead className="text-center">Action</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {assignments.map((assignment, index) => {
-            const resultStatus =
-              assignment.submissionUrl === ""
-                ? "Not Submit"
-                : assignment.status;
-            return (
-              <TableRow key={assignment.id}>
-                <TableCell className="text-center font-medium">
-                  {index + 1}
-                </TableCell>
-                <TableCell className="font-medium max-w-[200px] truncate">
-                  {assignment.title}
-                </TableCell>
-                <TableCell className="hidden md:table-cell max-w-[250px] truncate">
-                  {assignment.description}
-                </TableCell>
-                <TableCell>{assignment.type}</TableCell>
-                <TableCell>{assignment.createdBy}</TableCell>
-                <TableCell className="max-w-[150px] truncate">
-                  {assignment.assignTo}
-                </TableCell>
-                <TableCell className="text-center">
-                  {format(new Date(assignment.deadline), "dd/MM/yyyy")}
-                </TableCell>
-                <TableCell className="text-center">
-                  <span
-                    className={`${getStatusColor(
-                      resultStatus,
-                    )} px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap`}
-                  >
-                    {resultStatus}
-                  </span>
-                </TableCell>
-                <TableCell className="text-center">
-                  <div className="flex justify-center items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => handleEdit(assignment.id)}
-                      className="h-8 w-8 cursor-pointer"
+    <>
+      <div className="rounded-md border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[50px] text-center">No.</TableHead>
+              <TableHead>Title</TableHead>
+              <TableHead className="hidden md:table-cell">
+                Description
+              </TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Created By</TableHead>
+              <TableHead>Assign To</TableHead>
+              <TableHead className="text-center">Deadline</TableHead>
+              <TableHead className="text-center">Status</TableHead>
+              <TableHead className="text-center">Created At</TableHead>
+              <TableHead className="text-center">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {assignments.map((assignment, index) => {
+              const resultStatus =
+                assignment.submissionUrl === ""
+                  ? "Not Submit"
+                  : assignment.status;
+              return (
+                <TableRow
+                  key={assignment.id}
+                  className="cursor-pointer"
+                  onClick={() => setSelectedAssignment(assignment)}
+                >
+                  <TableCell className="text-center font-medium">
+                    {index + 1}
+                  </TableCell>
+                  <TableCell className="font-medium max-w-[200px] truncate">
+                    {assignment.title}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell max-w-[250px] truncate">
+                    {assignment.description}
+                  </TableCell>
+                  <TableCell>{assignment.type}</TableCell>
+                  <TableCell>{assignment.createdBy}</TableCell>
+                  <TableCell className="max-w-[150px] truncate">
+                    {assignment.assignTo}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {format(new Date(assignment.deadline), "dd/MM/yyyy")}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <span
+                      className={`${getStatusColor(
+                        resultStatus,
+                      )} px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap`}
                     >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      onClick={() => handleDelete(assignment.id)}
-                      className="h-8 w-8 cursor-pointer"
+                      {resultStatus}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {format(
+                      new Date(assignment.createdAt),
+                      "dd/MM/yyyy HH:mm:ss",
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div
+                      className="flex justify-center items-center gap-2"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleEdit(assignment)}
+                        className="h-8 w-8 cursor-pointer"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleDelete(assignment.id)}
+                        className="h-8 w-8 cursor-pointer"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+
+      <ManageAssignment
+        selectedAssignment={selectedAssignment}
+        setSelectedAssignment={setSelectedAssignment}
+        handleEdit={handleEdit}
+        handleDelete={handleDelete}
+      />
+
+      <EditAssignment
+        selectedAssignment={editAssignment}
+        setSelectedAssignment={setEditAssignment}
+      />
+    </>
   );
 }

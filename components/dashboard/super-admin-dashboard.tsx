@@ -20,8 +20,6 @@ export default function SuperAdminDashboard({
     return <div>Loading...</div>;
   }
 
-  console.log("dashboardData: ", dashboardData);
-
   return (
     <div className="space-y-6">
       {/* KPI Section */}

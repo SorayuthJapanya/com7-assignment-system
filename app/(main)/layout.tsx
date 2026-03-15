@@ -30,7 +30,7 @@ export default function MainLayout({
       <SidebarProvider className={`${inter.variable}`}>
         <AppSidebar />
         <SidebarInset>
-        <header className="sticky top-0 flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 shadow-xs bg-background z-10">
+        <header className="sticky top-0 flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 shadow-xs bg-background">
           <div className="flex items-center gap-2 px-8">
             <SidebarTrigger className="-ml-1" />
             <Separator

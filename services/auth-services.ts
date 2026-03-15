@@ -33,6 +33,16 @@ export const logout = async (): Promise<{ message: string }> => {
   return response.data;
 };
 
+export const addUser = async (
+  data: RegisterRequest,
+): Promise<LoginResponse> => {
+  const response = await axiosInstance.post<LoginResponse>(
+    "/api/auth",
+    data,
+  );
+  return response.data;
+};
+
 export const getUsers = async (search?: string): Promise<{ data: IUser[] }> => {
   const response = await axiosInstance.get("/api/auth/get-users", {
     params: { search },

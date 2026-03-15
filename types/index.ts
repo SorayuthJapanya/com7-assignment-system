@@ -1,6 +1,6 @@
 export interface AxiosErrorResponse {
-  message: string;
-  statusCode: number;
+  error: string;
+  status: number;
 }
 
 export interface IPagination {

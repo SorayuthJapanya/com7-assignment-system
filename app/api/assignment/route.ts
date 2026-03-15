@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { sendMail } from "@/lib/sendMail";
 import { getUserByUsername } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { NewAssignmentTemplate } from "@/template/new-assignment-template";
+import { format } from "date-fns";
+import constants from "constants";
 
 interface UserWithEmail {
   id: string;
@@ -42,10 +45,12 @@ export async function GET(request: NextRequest) {
 
     // Add search filter for title
     if (search) {
-      where.title = {
-        contains: search,
-        mode: "insensitive",
-      };
+      where.OR = [
+        { title: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+        { assignTo: { contains: search, mode: "insensitive" } },
+        { createdBy: { contains: search, mode: "insensitive" } },
+      ];
     }
 
     // Add userId filter
@@ -57,7 +62,7 @@ export async function GET(request: NextRequest) {
     if (status !== "all") {
       if (status === "not-submit") {
         where.submissionUrl = "";
-      } else if (status === "pending") {
+      } else if (status === "Pending") {
         where.submissionUrl = { not: "" };
         where.status = "Pending";
       } else {
@@ -77,7 +82,7 @@ export async function GET(request: NextRequest) {
     const assignments = await prisma.assignment.findMany({
       where,
       orderBy: {
-        createdAt: "desc",
+        deadline: "asc",
       },
       skip,
       take: limit,
@@ -147,6 +152,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const mailPromises: Promise<unknown>[] = [];
+
     for (const username of assignTo) {
       // Get user by username
       const user = await getUserByUsername(username);
@@ -187,31 +194,31 @@ export async function POST(request: NextRequest) {
           reward: parseInt(reward),
           deadline: new Date(deadline),
           assignTo: fullUser.username,
+          members: assignTo,
         },
       });
 
       console.log(`Assign to ${fullUser.nickname} successfully`);
 
-      // Send mail to all assigned users
-      // const mailPromises = assignedUsers.map(async (user: UserWithEmail) => {
-      //   const result = await sendMail({
-      //     to: user.email,
-      //     subject: `New Assignment: ${title}`,
-      //     html: `
-      //       <h2>New Assignment Created</h2>
-      //       <p><strong>Title:</strong> ${title}</p>
-      //       <p><strong>Description:</strong> ${description}</p>
-      //       <p><strong>Type:</strong> ${type}</p>
-      //       <p><strong>Deadline:</strong> ${deadline}</p>
-      //       <p><strong>Reward:</strong> ${reward}</p>
-      //       <p>Assigned by: ${authUser.username}</p>
-      //     `,
-      //   });
-      //   return result;
-      // });
-
-      // await Promise.all(mailPromises);
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/assignment`;
+      mailPromises.push(
+        sendMail({
+          to: fullUser.email,
+          subject: `New Assignment: ${title}`,
+          html: NewAssignmentTemplate({
+            username: fullUser.username,
+            type,
+            title,
+            description,
+            reward: parseInt(reward),
+            formattedDeadline: format(new Date(deadline), "dd/MM/yyyy HH:mm"),
+            url,
+          }),
+        }),
+      );
     }
+
+    await Promise.all(mailPromises);
 
     return NextResponse.json({
       message: "All Assignment created successfully",

@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
         LEFT JOIN "Assignment" a ON u.id = a."userId" 
           AND a."createdAt" >= ${startDate} 
           AND a."createdAt" <= ${endDate}
-        WHERE u.role != 'SUPER_ADMIN'
+        WHERE u.username IS NOT NULL
         GROUP BY u.id, u.username, u.nickname
         ORDER BY u.username
       ` as Promise<UserAssignmentStatus[]>,
@@ -185,7 +185,7 @@ export async function GET(request: NextRequest) {
         SELECT 
           TO_CHAR("createdAt", 'YYYY-MM') as month,
           COUNT(*) as total,
-          COUNT("submissionUrl" != '') as submitted,
+          COUNT(CASE WHEN "submissionUrl" IS NOT NULL AND "submissionUrl" != '' THEN 1 END) as submitted,
           COUNT(CASE WHEN status = 'Approved' THEN 1 END) as approved,
           COUNT(CASE WHEN status = 'Rejected' THEN 1 END) as rejected,
           COUNT(CASE WHEN "submitAt" > "deadline" THEN 1 END) as lateSubmit
@@ -303,7 +303,6 @@ export async function GET(request: NextRequest) {
               totalScore: Number(item.totalScore),
               assignmentCount: Number(item.assignmentCount),
             };
-            console.log("Mapped item:", mappedItem);
             return mappedItem;
           }),
           colors: {
