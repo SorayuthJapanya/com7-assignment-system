@@ -32,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Only run on client side
     const initAuth = () => {
       try {
-        const authUserStr = localStorage.getItem("authUser");
+        const authUserStr = localStorage.getItem("authUser") || sessionStorage.getItem("authUser");
         if (authUserStr) {
           const parsedUser = JSON.parse(authUserStr);
           setUser(parsedUser);
@@ -40,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Failed to parse auth user:", error);
         localStorage.removeItem("authUser");
+        sessionStorage.removeItem("authUser");
       } finally {
         setIsLoading(false);
       }
