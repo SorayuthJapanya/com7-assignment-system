@@ -40,9 +40,6 @@ export default function MainLayout({
               />
               <DynamicBreadcrumb />
             </div>
-            <div className="w-max flex items-center justify-end px-8">
-              <NavUser />
-            </div>
           </header>
           <div className="px-8 py-6 bg-primary/1">{children}</div>
         </SidebarInset>

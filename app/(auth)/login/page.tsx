@@ -55,8 +55,7 @@ export default function LoginPage() {
     const response = await loginMutation(data);
 
     // Set user to local storage or session storage based on remember me
-    const storage = rememberMe ? localStorage : sessionStorage;
-    storage.setItem("authUser", JSON.stringify(response.user));
+    localStorage.setItem("authUser", JSON.stringify(response.user));
 
     // Remember username and password if remember me is checked
     if (rememberMe) {

@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@hookform/resolvers':
-        specifier: ^3.10.0
-        version: 3.10.0(react-hook-form@7.71.2(react@19.2.3))
+        specifier: ^3.9.1
+        version: 3.9.1(react-hook-form@7.71.2(react@19.2.3))
       '@prisma/adapter-pg':
         specifier: ^7.4.2
         version: 7.4.2
@@ -413,8 +413,8 @@ packages:
     peerDependencies:
       hono: ^4
 
-  '@hookform/resolvers@3.10.0':
-    resolution: {integrity: sha512-79Dv+3mDF7i+2ajj7SkypSKHhl1cbln1OGavqrsF7p6mbUv11xpqpacPsGDCTRvCSjEEIez2ef1NveSVL3b0Ag==}
+  '@hookform/resolvers@3.9.1':
+    resolution: {integrity: sha512-ud2HqmGBM0P0IABqoskKWI6PEf6ZDDBZkFqe2Vnl+mTHCEHzr3ISjjZyCwTjC/qpL25JC9aIDkloQejvMeq0ug==}
     peerDependencies:
       react-hook-form: ^7.0.0
 
@@ -4913,7 +4913,7 @@ snapshots:
     dependencies:
       hono: 4.11.4
 
-  '@hookform/resolvers@3.10.0(react-hook-form@7.71.2(react@19.2.3))':
+  '@hookform/resolvers@3.9.1(react-hook-form@7.71.2(react@19.2.3))':
     dependencies:
       react-hook-form: 7.71.2(react@19.2.3)
 
