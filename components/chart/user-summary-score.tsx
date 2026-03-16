@@ -33,7 +33,6 @@ const chartConfig = {
 export const UserSummaryScoreChart = ({
   dashboardData,
 }: UserSummaryScoreChartProps) => {
-  console.log("dashboardData in user summary score: ", dashboardData)
   return (
     <Card className="flex flex-col rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all duration-200">
       <CardHeader className="items-center pb-0">
