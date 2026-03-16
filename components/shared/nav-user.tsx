@@ -79,7 +79,7 @@ export default function NavUser() {
                 </div>
                 <div className="flex flex-col">
                   <p>{authUser.nickname}</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="max-w-36 truncate text-sm text-muted-foreground">
                     {authUser.email}
                   </p>
                 </div>
