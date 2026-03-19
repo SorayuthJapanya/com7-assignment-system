@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
+import { useAuthUser } from "@/hooks/use-current-user";
+import { useLocalPresets } from "@/hooks/use-local-presets";
+import { ComboboxInput } from "@/components/ui/combobox-input";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Check, ChevronsUpDown, X, CalendarIcon } from "lucide-react";
@@ -23,7 +26,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Command,
   CommandEmpty,
@@ -58,6 +60,10 @@ export default function AddAssignmentForm({
 }: AddAssignmentFormProps) {
   const [open, setOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
+
+  const authUser = useAuthUser();
+  const titlePresets = useLocalPresets("title", authUser?.id);
+  const descriptionPresets = useLocalPresets("description", authUser?.id);
   const router = useRouter();
 
   const { mutateAsync: createAssignment } = useCreateAssignment();
@@ -100,7 +106,7 @@ export default function AddAssignmentForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        {/* Title input */}
+        {/* Title input + dropdown */}
         <FormField
           control={form.control}
           name="title"
@@ -108,14 +114,22 @@ export default function AddAssignmentForm({
             <FormItem>
               <FormLabel>Title</FormLabel>
               <FormControl>
-                <Input placeholder="Enter assignment title" {...field} />
+                <ComboboxInput
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Enter assignment title"
+                  presets={titlePresets.presets}
+                  onAddPreset={titlePresets.addPreset}
+                  onUpdatePreset={titlePresets.updatePreset}
+                  onRemovePreset={titlePresets.removePreset}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {/* Description text-area */}
+        {/* Description input + dropdown */}
         <FormField
           control={form.control}
           name="description"
@@ -123,10 +137,15 @@ export default function AddAssignmentForm({
             <FormItem>
               <FormLabel>Description</FormLabel>
               <FormControl>
-                <Textarea
+                <ComboboxInput
+                  value={field.value}
+                  onChange={field.onChange}
                   placeholder="Describe the assignment details..."
-                  className="min-h-[120px]"
-                  {...field}
+                  presets={descriptionPresets.presets}
+                  onAddPreset={descriptionPresets.addPreset}
+                  onUpdatePreset={descriptionPresets.updatePreset}
+                  onRemovePreset={descriptionPresets.removePreset}
+                  multiline
                 />
               </FormControl>
               <FormMessage />

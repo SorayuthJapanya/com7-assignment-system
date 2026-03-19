@@ -11,8 +11,10 @@ import { IAssignment } from "@/types/assignment";
 import { Button } from "../ui/button";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
-import { Textarea } from "../ui/textarea";
 import { useUpdateAssignment } from "@/hooks/use-assignment";
+import { useAuthUser } from "@/hooks/use-current-user";
+import { useLocalPresets } from "@/hooks/use-local-presets";
+import { ComboboxInput } from "@/components/ui/combobox-input";
 import Swal from "sweetalert2";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
@@ -32,6 +34,11 @@ export default function EditAssignment({
   setSelectedAssignment,
 }: EditAssignmentProps) {
   const { mutateAsync: updateAssignment, isPending } = useUpdateAssignment();
+
+  const authUser = useAuthUser();
+
+  const titlePresets = useLocalPresets("title", authUser?.id);
+  const descriptionPresets = useLocalPresets("description", authUser?.id);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -109,11 +116,14 @@ export default function EditAssignment({
               <Label htmlFor="edit-title" className="font-semibold">
                 Title
               </Label>
-              <Input
-                id="edit-title"
+              <ComboboxInput
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={setTitle}
                 placeholder="Assignment title"
+                presets={titlePresets.presets}
+                onAddPreset={titlePresets.addPreset}
+                onUpdatePreset={titlePresets.updatePreset}
+                onRemovePreset={titlePresets.removePreset}
               />
             </div>
 
@@ -121,13 +131,15 @@ export default function EditAssignment({
               <Label htmlFor="edit-description" className="font-semibold">
                 Description
               </Label>
-              <Textarea
-                id="edit-description"
+              <ComboboxInput
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={setDescription}
                 placeholder="Assignment description"
-                rows={4}
-                className="h-32 w-full max-w-[460px]"
+                presets={descriptionPresets.presets}
+                onAddPreset={descriptionPresets.addPreset}
+                onUpdatePreset={descriptionPresets.updatePreset}
+                onRemovePreset={descriptionPresets.removePreset}
+                multiline
               />
             </div>
 
