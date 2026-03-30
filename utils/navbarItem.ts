@@ -1,6 +1,15 @@
-import { FileText, LayoutDashboard, Users } from "lucide-react";
+import { FileText, LayoutDashboard, Users, LucideIcon } from "lucide-react";
 
-export const navbarItems = [
+export type NavbarItem = {
+    title: string;
+    url?: string;
+    icon?: LucideIcon;
+    isSuperAdmin?: boolean;
+    isAdmin?: boolean;
+    items?: NavbarItem[];
+};
+
+export const navbarItems: NavbarItem[] = [
     {
         title: "Dashboard",
         url: "/dashboard",
@@ -15,21 +24,22 @@ export const navbarItems = [
                 title: "My Assignment",
                 url: "/assignment",
                 isSuperAdmin: false,
+                isAdmin: false,
             },
             {
                 title: "Manage Assignment",
                 url: "/assignment/manage",
-                isSuperAdmin: true,
+                isAdmin: true,
             },
             {
                 title: "Create Assignment",
                 url: "/assignment/add",
-                isSuperAdmin: true,
+                isAdmin: true,
             },
             {
                 title: "Review Assignment",
                 url: "/assignment/review",
-                isSuperAdmin: true,
+                isAdmin: true,
             }
         ]
     },

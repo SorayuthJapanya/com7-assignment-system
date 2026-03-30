@@ -4,21 +4,22 @@ import { useMemo } from "react";
 import { UserAssignmentStatusChart } from "../chart/user-assign-status";
 import { StatusDistributionChart } from "../chart/status-distribution";
 import { MonthlyTrendChart } from "../chart/monthly-trend";
+import { AverageScoreByMonthChart } from "../chart/average-score-by-month";
 import {
   UserAssignmentStatus,
   StatusDistribution,
   ChartData,
   MonthlyTrend,
   UserScoreSummary,
+  AverageScoreByMonth,
 } from "@/types/dashboard";
-import { UserSummaryScoreChart } from "../chart/user-summary-score";
 
 interface ChartsSectionProps {
   charts?: {
     userAssignmentStatus?: ChartData<UserAssignmentStatus>;
     statusDistribution?: ChartData<StatusDistribution>;
     monthlyTrend?: ChartData<MonthlyTrend>;
-    userScoreSummary?: ChartData<UserScoreSummary>;
+    averageScoreByMonth?: ChartData<AverageScoreByMonth>;
   };
 }
 
@@ -42,9 +43,9 @@ export default function ChartsSection({ charts }: ChartsSectionProps) {
     [charts?.monthlyTrend?.data],
   );
 
-  const userSummaryScoreData = useMemo(
-    () => charts?.userScoreSummary?.data || [],
-    [charts?.userScoreSummary?.data],
+  const averageScoreByMonthData = useMemo(
+    () => charts?.averageScoreByMonth?.data || [],
+    [charts?.averageScoreByMonth?.data],
   );
 
   return (
@@ -63,15 +64,16 @@ export default function ChartsSection({ charts }: ChartsSectionProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Average Score By Month Chart */}
+        {charts?.averageScoreByMonth && (
+          <AverageScoreByMonthChart dashboardData={averageScoreByMonthData} />
+        )}
+        
         {/* Monthly Trend Chart */}
         {charts?.monthlyTrend && (
           <MonthlyTrendChart dashboardData={monthlyTrendData} />
         )}
 
-        {/* User Summary Score Chart */}
-        {charts?.userScoreSummary && (
-          <UserSummaryScoreChart dashboardData={userSummaryScoreData} />
-        )}
       </div>
     </div>
   );

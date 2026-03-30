@@ -58,6 +58,11 @@ export async function GET(request: NextRequest) {
       where.userId = userId;
     }
 
+    // Role-based filtering: ADMINs only see assignments they created
+    if (authUser.role === "ADMIN") {
+      where.createdBy = authUser.username;
+    }
+
     // Add status filter
     if (status !== "all") {
       if (status === "not-submit") {
@@ -123,7 +128,7 @@ export async function POST(request: NextRequest) {
     // Get user
     const authUser = authResult.user!;
 
-    if (authUser.role !== "SUPER_ADMIN") {
+    if (authUser.role !== "SUPER_ADMIN" && authUser.role !== "ADMIN") {
       return NextResponse.json(
         { error: "You are not allowed to create assignment" },
         { status: 401 },

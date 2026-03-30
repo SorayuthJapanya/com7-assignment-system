@@ -2,7 +2,7 @@
 
 import { useAdminDashboard } from "@/hooks/user-dashboard";
 import KpiCard from "../card/kpi-card";
-import { CheckCircle, FileText, Inbox, Star } from "lucide-react";
+import { TrendingUp, Users, AlertCircle, ClipboardCheck } from "lucide-react";
 import ChartsSection from "./charts-section";
 
 interface SuperAdminDashboardProps {
@@ -22,31 +22,33 @@ export default function SuperAdminDashboard({
 
   return (
     <div className="space-y-6">
-      {/* KPI Section */}
+      {/* KPI Section - TA Team Performance */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard 
-          title="Total Assignments" 
+          title="All Assignments" 
           value={dashboardData?.kpis?.totalAssignments?.toString() || "0"} 
-          icon={<FileText className="size-5" />} 
-          suffix="Assign"
+          icon={<ClipboardCheck className="size-5" />} 
+          suffix="Tasks"
         />
         <KpiCard 
-          title="Total Submitted" 
-          value={dashboardData?.kpis?.totalSubmitted?.toString() || "0"} 
-          icon={<Inbox className="size-5" />} 
-          suffix="Submit"
+          title="Completion Rate" 
+          value={dashboardData?.kpis?.totalSubmitted && dashboardData?.kpis?.totalAssignments 
+            ? Math.round((dashboardData.kpis.totalSubmitted / dashboardData.kpis.totalAssignments) * 100).toString()
+            : "0"} 
+          icon={<TrendingUp className="size-5" />} 
+          suffix="%"
         />
         <KpiCard 
-          title="Total Approved" 
-          value={dashboardData?.kpis?.totalApproved?.toString() || "0"} 
-          icon={<CheckCircle className="size-5" />} 
-          suffix="Approve"
-        />
-        <KpiCard 
-          title="Average Score" 
+          title="Avg Score" 
           value={dashboardData?.kpis?.averageScore?.toString() || "0"} 
-          icon={<Star className="size-5" />} 
-          suffix="Score"
+          icon={<AlertCircle className="size-5" />} 
+          suffix="Points"
+        />
+        <KpiCard 
+          title="Late Submissions" 
+          value={dashboardData?.kpis?.lateSubmissions?.toString() || "0"} 
+          icon={<Users className="size-5" />} 
+          suffix="Tasks"
         />
       </div>
 

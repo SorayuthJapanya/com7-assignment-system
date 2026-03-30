@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { registerSchema } from "@/schemas/auth-schema";
-import { useAddUser, useRegister } from "@/hooks/use-auth";
+import { useAddUser } from "@/hooks/use-auth";
 import Swal from "sweetalert2";
 
 interface AddUserDialogProps {
@@ -44,6 +44,7 @@ export default function AddUserDialog({
   const { mutateAsync: addUser, isPending } = useAddUser();
 
   const form = useForm<z.infer<typeof formSchema>>({
+    // @ts-expect-error - zodResolver type compatibility issue
     resolver: zodResolver(formSchema),
     defaultValues: {
       username: "",

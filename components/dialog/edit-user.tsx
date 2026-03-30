@@ -39,7 +39,7 @@ interface EditUserDialogProps {
 const editUserSchema = z.object({
   email: z.string().email("Invalid email address"),
   nickname: z.string().min(2, "Nickname must be at least 2 characters"),
-  role: z.enum(["STAFF", "SUPER_ADMIN"], {
+  role: z.enum(["STAFF", "ADMIN", "SUPER_ADMIN"], {
     required_error: "Role is required",
   }),
 });
@@ -52,6 +52,7 @@ export default function EditUserDialog({
   const { mutateAsync: updateUser, isPending } = useUpdateUser();
 
   const form = useForm<z.infer<typeof editUserSchema>>({
+    // @ts-expect-error - zodResolver type compatibility issue
     resolver: zodResolver(editUserSchema),
     defaultValues: {
       email: "",
@@ -162,6 +163,7 @@ export default function EditUserDialog({
                     </FormControl>
                     <SelectContent>
                       <SelectItem value="STAFF">STAFF</SelectItem>
+                      <SelectItem value="ADMIN">ADMIN</SelectItem>
                       <SelectItem value="SUPER_ADMIN">SUPER_ADMIN</SelectItem>
                     </SelectContent>
                   </Select>

@@ -33,8 +33,9 @@ export async function GET(
     }
 
     // Check if user has permission to view this assignment
-    // Allow SUPER_ADMIN or the assigned user to view
-    if (authUser.role !== "SUPER_ADMIN" && assignment.userId !== authUser.id) {
+    // Allow SUPER_ADMIN, the assignment creator (ADMIN), or the assigned user to view
+    const isAdminCreator = authUser.role === "ADMIN" && assignment.createdBy === authUser.username;
+    if (authUser.role !== "SUPER_ADMIN" && assignment.userId !== authUser.id && !isAdminCreator) {
       return NextResponse.json(
         { error: "You are not authorized to view this assignment" },
         { status: 403 },
@@ -82,8 +83,9 @@ export async function PUT(
     }
 
     // Check if user has permission to update this assignment
-    // Only SUPER_ADMIN can update assignments
-    if (authUser.role !== "SUPER_ADMIN") {
+    // SUPER_ADMIN and the creator ADMIN can update assignments
+    const isAdminCreator = authUser.role === "ADMIN" && existingAssignment.createdBy === authUser.username;
+    if (authUser.role !== "SUPER_ADMIN" && !isAdminCreator) {
       return NextResponse.json(
         { error: "You are not authorized to update this assignment" },
         { status: 403 },
@@ -153,8 +155,9 @@ export async function DELETE(
     }
 
     // Check if user has permission to delete this assignment
-    // Only SUPER_ADMIN can delete assignments
-    if (authUser.role !== "SUPER_ADMIN") {
+    // SUPER_ADMIN and the creator ADMIN can delete assignments
+    const isAdminCreator = authUser.role === "ADMIN" && existingAssignment.createdBy === authUser.username;
+    if (authUser.role !== "SUPER_ADMIN" && !isAdminCreator) {
       return NextResponse.json(
         { error: "You are not authorized to delete this assignment" },
         { status: 403 },

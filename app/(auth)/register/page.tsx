@@ -32,6 +32,7 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const form = useForm<RegisterSchema>({
+    // @ts-expect-error - zodResolver type compatibility issue
     resolver: zodResolver(registerSchema),
     defaultValues: {
       username: "",

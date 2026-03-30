@@ -32,9 +32,9 @@ export async function PUT(
     }
 
     // Validate role if provided
-    if (role && !["SUPER_ADMIN", "STAFF"].includes(role)) {
+    if (role && !["SUPER_ADMIN", "ADMIN", "STAFF"].includes(role)) {
       return NextResponse.json(
-        { error: "Invalid role. Must be SUPER_ADMIN or STAFF" },
+        { error: "Invalid role. Must be SUPER_ADMIN, ADMIN or STAFF" },
         { status: 400 },
       );
     }

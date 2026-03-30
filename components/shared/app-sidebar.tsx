@@ -28,7 +28,7 @@ import { useAuth } from "@/contexts/auth-context";
 
 export default function AppSidebar() {
   const pathname = usePathname();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, isAdmin } = useAuth();
 
   const isActive = (url?: string) => {
     if (!url) return false;
@@ -48,13 +48,15 @@ export default function AppSidebar() {
       ...item,
       items: item.items?.filter((subItem) => {
         if (subItem.isSuperAdmin && !isSuperAdmin) return false;
+        if (subItem.isAdmin && !isAdmin) return false;
         return true;
       })
     })).filter((item) => {
       if (item.isSuperAdmin && !isSuperAdmin) return false;
+      if (item.isAdmin && !isAdmin) return false;
       return true;
     });
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, isAdmin]);
 
   return (
     <Sidebar>
@@ -104,7 +106,7 @@ export default function AppSidebar() {
                                 : ""
                             }
                           >
-                            <item.icon />
+                            {item.icon && (() => { const Icon = item.icon; return <Icon />; })()}
                             <span>{item.title}</span>
                             {item.items?.length ? (
                               <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
@@ -119,7 +121,7 @@ export default function AppSidebar() {
                                   asChild
                                   size="lg"
                                   className={
-                                    isSubItemActive(subItem.url)
+                                    isSubItemActive(subItem.url || "")
                                       ? "bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary"
                                       : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                                   }
@@ -144,7 +146,7 @@ export default function AppSidebar() {
                         }
                       >
                         <a href={item.url}>
-                          <item.icon />
+                          {item.icon && (() => { const Icon = item.icon; return <Icon />; })()}
                           <span>{item.title}</span>
                         </a>
                       </SidebarMenuButton>

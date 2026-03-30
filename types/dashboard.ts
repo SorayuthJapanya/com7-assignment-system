@@ -21,11 +21,12 @@ export interface StatusDistribution {
 
 export interface MonthlyTrend {
   month: string;
-  total: number;
-  submitted: number;
   approved: number;
-  rejected: number;
-  lateSubmit: number;
+}
+
+export interface AverageScoreByMonth {
+  month: string;
+  averageScore: number;
 }
 
 export interface UserScoreSummary {
@@ -46,6 +47,8 @@ export interface ChartColors {
   totalScore?: string;
   assigned?: string;
   assignmentCount?: string;
+  averageScore?: string;
+  score?: string;
 }
 
 export interface ChartData<T> {
@@ -61,6 +64,7 @@ export interface AdminChartsResponse {
     userAssignmentStatus: ChartData<UserAssignmentStatus>;
     statusDistribution: ChartData<StatusDistribution>;
     monthlyTrend: ChartData<MonthlyTrend>;
+    averageScoreByMonth: ChartData<AverageScoreByMonth>;
     userScoreSummary: ChartData<UserScoreSummary>;
   };
 }
@@ -70,6 +74,7 @@ export interface AdminDashboardKPIs {
   totalSubmitted: number;
   totalApproved: number;
   averageScore: number;
+  lateSubmissions: number;
 }
 
 export interface UserMonthlyTrend {
@@ -81,6 +86,11 @@ export interface UserStatusDistribution {
   name: string;
   value: number;
   percentage: number;
+}
+
+export interface UserScoreByMonth {
+  month: string;
+  score: number;
 }
 
 export interface UserDashboardKPIs {
@@ -95,6 +105,7 @@ export interface UserChartsResponse {
   charts: {
     monthlyTrend: ChartData<UserMonthlyTrend>;
     statusDistribution: ChartData<UserStatusDistribution>;
+    scoreByMonth: ChartData<UserScoreByMonth>;
   };
 }
 

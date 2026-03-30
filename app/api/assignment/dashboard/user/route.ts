@@ -5,6 +5,7 @@ import type {
   UserDashboardResponse,
   UserMonthlyTrend,
   UserStatusDistribution,
+  UserScoreByMonth,
 } from "@/types/dashboard";
 
 export async function GET(request: NextRequest) {
@@ -93,17 +94,31 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Chart 1: Monthly Trend (User's assignment trend over months)
+    // Chart 1: Monthly Trend (User's assignment trend over months for selected year)
     const monthlyTrendData = await prisma.$queryRaw<UserMonthlyTrend[]>`
+      WITH all_months AS (
+        SELECT 
+          generate_series(
+            MAKE_DATE(${year}, 1, 1),
+            MAKE_DATE(${year}, 12, 1),
+            INTERVAL '1 month'
+          ) as month_start
+      ),
+      monthly_data AS (
+        SELECT 
+          TO_CHAR("createdAt", 'YYYY-MM') as month,
+          COUNT(*) as assigned
+        FROM "Assignment" 
+        WHERE "userId" = ${userId}
+          AND EXTRACT(YEAR FROM "createdAt") = ${year}
+        GROUP BY TO_CHAR("createdAt", 'YYYY-MM')
+      )
       SELECT 
-        TO_CHAR("createdAt", 'YYYY-MM') as month,
-        COUNT(*) as assigned
-      FROM "Assignment" 
-      WHERE "userId" = ${userId}
-        AND "createdAt" >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '11 months')
-        AND "createdAt" <= DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'
-      GROUP BY TO_CHAR("createdAt", 'YYYY-MM')
-      ORDER BY month
+        TO_CHAR(am.month_start, 'YYYY-MM') as month,
+        COALESCE(md.assigned, 0) as assigned
+      FROM all_months am
+      LEFT JOIN monthly_data md ON TO_CHAR(am.month_start, 'YYYY-MM') = md.month
+      ORDER BY am.month_start
     `;
 
     // Chart 2: Status Distribution (User's assignment status distribution)
@@ -150,6 +165,34 @@ export async function GET(request: NextRequest) {
         AND "createdAt" <= ${endDate}
     `;
 
+    // Chart 3: Score By Month (User's total score per month for selected year)
+    const scoreByMonthData = await prisma.$queryRaw<UserScoreByMonth[]>`
+      WITH all_months AS (
+        SELECT 
+          generate_series(
+            MAKE_DATE(${year}, 1, 1),
+            MAKE_DATE(${year}, 12, 1),
+            INTERVAL '1 month'
+          ) as month_start
+      ),
+      monthly_scores AS (
+        SELECT 
+          TO_CHAR(a."createdAt", 'YYYY-MM') as month,
+          COALESCE(SUM(a."finalScore"), 0) as score
+        FROM "Assignment" a
+        WHERE a."userId" = ${userId}
+          AND EXTRACT(YEAR FROM a."createdAt") = ${year}
+          AND a."finalScore" > 0
+        GROUP BY TO_CHAR(a."createdAt", 'YYYY-MM')
+      )
+      SELECT 
+        TO_CHAR(am.month_start, 'YYYY-MM') as month,
+        COALESCE(CAST(ms.score AS NUMERIC), 0) as score
+      FROM all_months am
+      LEFT JOIN monthly_scores ms ON TO_CHAR(am.month_start, 'YYYY-MM') = ms.month
+      ORDER BY am.month_start
+    `;
+
     // Format response data
     const response: UserDashboardResponse = {
       role: "USER",
@@ -163,7 +206,7 @@ export async function GET(request: NextRequest) {
       charts: {
         // Chart 1: Monthly Trend
         monthlyTrend: {
-          title: "Assignment Trend (Last 12 Months)",
+          title: `Assignment Trend (${year})`,
           type: "line",
           data: monthlyTrendData.map((item) => ({
             month: item.month,
@@ -188,6 +231,19 @@ export async function GET(request: NextRequest) {
             "#10b981", // Approved - Green
             "#ef4444", // Rejected - Red
           ],
+        },
+
+        // Chart 3: Score By Month
+        scoreByMonth: {
+          title: `Score By Month (${year})`,
+          type: "line",
+          data: scoreByMonthData.map((item) => ({
+            month: item.month,
+            score: Math.round(parseFloat(String(item.score)) || 0),
+          })),
+          colors: {
+            score: "var(--chart-3)",
+          },
         },
       },
     };

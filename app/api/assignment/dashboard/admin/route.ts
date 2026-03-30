@@ -7,6 +7,7 @@ import type {
   StatusDistribution,
   MonthlyTrend,
   UserScoreSummary,
+  AverageScoreByMonth,
 } from "@/types/dashboard";
 
 export async function GET(request: NextRequest) {
@@ -92,6 +93,19 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // KPI 5: Late Submissions
+    const lateSubmissions = await prisma.assignment.count({
+      where: {
+        submitAt: {
+          gt: prisma.assignment.fields.deadline,
+        },
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+    });
+
     // Chart 1: User Assignment Status Overview
     const userAssignmentData = await prisma.$queryRaw<UserAssignmentStatus[]>`
       SELECT 
@@ -173,23 +187,62 @@ export async function GET(request: NextRequest) {
         AND "createdAt" <= ${endDate}
     `;
 
-    // Chart 3: Monthly Trend
+    // Chart 3: Monthly Trend - Only Approved Assignments (All Months)
     const monthlyTrendData = await prisma.$queryRaw<MonthlyTrend[]>`
+      WITH all_months AS (
+        SELECT 
+          generate_series(
+            MAKE_DATE(${year}, 1, 1),
+            MAKE_DATE(${year}, 12, 1),
+            INTERVAL '1 month'
+          ) as month_start
+      ),
+      monthly_data AS (
+        SELECT 
+          TO_CHAR(a."createdAt", 'YYYY-MM') as month,
+          COUNT(CASE WHEN a.status = 'Approved' THEN 1 END) as approved
+        FROM "Assignment" a
+        WHERE EXTRACT(YEAR FROM a."createdAt") = ${year}
+        GROUP BY TO_CHAR(a."createdAt", 'YYYY-MM')
+      )
       SELECT 
-        TO_CHAR("createdAt", 'YYYY-MM') as month,
-        COUNT(*) as total,
-        COUNT(CASE WHEN "submissionUrl" IS NOT NULL AND "submissionUrl" != '' THEN 1 END) as submitted,
-        COUNT(CASE WHEN status = 'Approved' THEN 1 END) as approved,
-        COUNT(CASE WHEN status = 'Rejected' THEN 1 END) as rejected,
-        COUNT(CASE WHEN "submitAt" > "deadline" THEN 1 END) as lateSubmit
-      FROM "Assignment" 
-      WHERE "createdAt" >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '11 months')
-        AND "createdAt" <= DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'
-      GROUP BY TO_CHAR("createdAt", 'YYYY-MM')
-      ORDER BY month
+        TO_CHAR(am.month_start, 'YYYY-MM') as month,
+        COALESCE(md.approved, 0) as approved
+      FROM all_months am
+      LEFT JOIN monthly_data md ON TO_CHAR(am.month_start, 'YYYY-MM') = md.month
+      ORDER BY am.month_start
     `;
 
-    // Chart 4: User Score Summary
+    // Chart 4: Average Score by Month
+    const averageScoreByMonthData = await prisma.$queryRaw<AverageScoreByMonth[]>`
+      WITH all_months AS (
+        SELECT 
+          generate_series(
+            MAKE_DATE(${year}, 1, 1),
+            MAKE_DATE(${year}, 12, 1),
+            INTERVAL '1 month'
+          ) as month_start
+      ),
+      monthly_scores AS (
+        SELECT 
+          TO_CHAR(a."createdAt", 'YYYY-MM') as month,
+          AVG(a."finalScore") as averageScore
+        FROM "Assignment" a
+        WHERE EXTRACT(YEAR FROM a."createdAt") = ${year}
+          AND a."finalScore" > 0
+          AND a.status = 'Approved'
+        GROUP BY TO_CHAR(a."createdAt", 'YYYY-MM')
+      )
+      SELECT 
+        TO_CHAR(am.month_start, 'YYYY-MM') as month,
+        COALESCE(CAST(ms.averageScore AS NUMERIC), 0) as "averageScore"
+      FROM all_months am
+      LEFT JOIN monthly_scores ms ON TO_CHAR(am.month_start, 'YYYY-MM') = ms.month
+      ORDER BY am.month_start
+    `;
+
+    
+    // Chart 5: User Score Summary
     const userScoreSummaryData = await prisma.$queryRaw<UserScoreSummary[]>`
       SELECT 
         u.username,
@@ -201,14 +254,6 @@ export async function GET(request: NextRequest) {
       GROUP BY u.id, u.username, u.nickname
       ORDER BY "totalScore" DESC
     `;
-
-    console.log(
-      "Raw userScoreSummaryData length:",
-      userScoreSummaryData.length,
-    );
-    if (userScoreSummaryData.length > 0) {
-      console.log("First raw item:", userScoreSummaryData[0]);
-    }
 
     const totalSubmitted = Array.isArray(totalSubmittedRaw)
       ? Number((totalSubmittedRaw[0] as { count: bigint })?.count || 0)
@@ -223,6 +268,7 @@ export async function GET(request: NextRequest) {
         totalSubmitted,
         totalApproved,
         averageScore: Math.round(averageScore._avg.finalScore || 0),
+        lateSubmissions,
       },
       charts: {
         // Chart 1: User Assignment Status Overview
@@ -265,26 +311,31 @@ export async function GET(request: NextRequest) {
 
         // Chart 3: Monthly Trend
         monthlyTrend: {
-          title: "Monthly Assignment Trend",
-          type: "line",
+          title: "Tasks Completed By Month",
+          type: "bar",
           data: monthlyTrendData.map((item) => ({
             month: item.month,
-            total: Number(item.total || 0),
-            submitted: Number(item.submitted || 0),
             approved: Number(item.approved || 0),
-            rejected: Number(item.rejected || 0),
-            lateSubmit: Number(item.lateSubmit || 0),
           })),
           colors: {
-            total: "#6b7280",
-            submitted: "#3b82f6",
-            approved: "#10b981",
-            rejected: "#ef4444",
-            lateSubmit: "#f59e0b",
+            approved: "var(--chart-3)",
           },
         },
 
-        // Chart 4: User Score Summary
+        // Chart 4: Average Score by Month
+        averageScoreByMonth: {
+          title: "Average Score By Month",
+          type: "line",
+          data: averageScoreByMonthData.map((item) => ({
+            month: item.month,
+            averageScore: Math.round(parseFloat(String(item.averageScore)) || 0),
+          })),
+          colors: {
+            averageScore: "var(--primary)",
+          },
+        },
+
+        // Chart 5: User Score Summary
         userScoreSummary: {
           title: "User Score Summary",
           type: "bar",

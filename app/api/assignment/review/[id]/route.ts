@@ -20,9 +20,26 @@ export async function PUT(
     const authUser = authResult.user!;
     const assignmentId = (await params).id;
 
-    if (authUser.role !== "SUPER_ADMIN") {
+    // Get existing assignment
+    const existingAssignment = await prisma.assignment.findUnique({
+      where: { id: assignmentId },
+    });
+
+    if (!existingAssignment) {
       return NextResponse.json(
-        { error: "You are not authorized to review this assignment" },
+        { error: "Assignment not found" },
+        { status: 404 },
+      );
+    }
+
+    // Check if user has permission to update this assignment
+    // SUPER_ADMIN and the creator ADMIN can update assignments
+    const isAdminCreator =
+      authUser.role === "ADMIN" &&
+      existingAssignment.createdBy === authUser.username;
+    if (authUser.role !== "SUPER_ADMIN" && !isAdminCreator) {
+      return NextResponse.json(
+        { error: "You are not authorized to update this assignment" },
         { status: 403 },
       );
     }
@@ -30,14 +47,6 @@ export async function PUT(
     // Get request body
     const body = await request.json();
     const { feedback, finalScore = 0, status = "Pending" } = body;
-
-    // Validate required fields
-    if (!feedback) {
-      return NextResponse.json(
-        { error: "Feedback is required" },
-        { status: 400 },
-      );
-    }
 
     // Check if assignment exists
     const assignment = await prisma.assignment.findUnique({

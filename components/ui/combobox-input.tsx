@@ -202,7 +202,8 @@ export function ComboboxInput({
                   <SearchIcon />
                 </InputGroupAddon>
                 <InputGroupAddon align="inline-end" className="font-normal">
-                  {presets.length} result {presets.length > 1 ? "s" : ""}
+                  {filteredPresets.length} result
+                  {filteredPresets.length > 1 ? "s" : ""}
                 </InputGroupAddon>
               </InputGroup>
             </div>

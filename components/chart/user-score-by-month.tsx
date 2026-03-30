@@ -1,6 +1,6 @@
 "use client";
 
-import { UserMonthlyTrend } from "@/types/dashboard";
+import { UserScoreByMonth } from "@/types/dashboard";
 import {
   Line,
   LineChart,
@@ -26,19 +26,19 @@ const formatShortMonth = (monthStr: string) => {
 };
 
 const chartConfig = {
-  assigned: {
-    label: "Assigned",
-    color: "var(--chart-1)",
+  score: {
+    label: "Score",
+    color: "var(--chart-3)",
   },
 };
 
-interface UserMonthlyTrendChartProps {
-  dashboardData: UserMonthlyTrend[];
+interface UserScoreByMonthChartProps {
+  dashboardData: UserScoreByMonth[];
 }
 
-export const UserMonthlyTrendChart = ({
+export const UserScoreByMonthChart = ({
   dashboardData,
-}: UserMonthlyTrendChartProps) => {
+}: UserScoreByMonthChartProps) => {
   // Transform data with formatted month names
   const transformedData = dashboardData.map((item) => ({
     ...item,
@@ -48,15 +48,15 @@ export const UserMonthlyTrendChart = ({
   return (
     <Card className="flex flex-col rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all duration-200">
       <CardHeader className="items-center pb-0">
-        <CardTitle>Monthly Trend</CardTitle>
-        <CardDescription>Assignment trends over time</CardDescription>
+        <CardTitle>Score By Month</CardTitle>
+        <CardDescription>Your total scores per month</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 pb-0">
         <ChartContainer config={chartConfig} className="max-h-64 w-full">
           <ResponsiveContainer width="100%" height={250}>
             <LineChart
               data={transformedData}
-              margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              margin={{ top: 20, right: 30, left: -20, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
@@ -76,8 +76,8 @@ export const UserMonthlyTrendChart = ({
               />
               <Line
                 type="monotone"
-                dataKey="assigned"
-                stroke={chartConfig.assigned.color}
+                dataKey="score"
+                stroke={chartConfig.score.color}
                 strokeWidth={2}
                 dot={{ r: 4 }}
                 activeDot={{ r: 6 }}

@@ -23,19 +23,18 @@ interface StatusDistributionChartProps {
 }
 
 const defaultColors = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-  "var(--color-chart-5)",
+  "#193cb8",
+  "var(--color-primary)",
+  "var(--color-destructive)",
+  "#facc15", // yellow
+  "#9ca3af", // gray
 ];
 
 export const StatusDistributionChart = ({
   data,
   colors,
 }: StatusDistributionChartProps) => {
-  const colorArray =
-    Array.isArray(colors) && colors.length > 0 ? colors : defaultColors;
+  const colorArray = defaultColors;
 
   return (
     <Card className="flex flex-col rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all duration-200">

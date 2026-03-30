@@ -7,7 +7,7 @@ interface AuthUser {
   username: string;
   nickname: string;
   email: string;
-  role: "SUPER_ADMIN" | "STAFF";
+  role: "SUPER_ADMIN" | "ADMIN" | "STAFF";
   createdAt: string;
   updatedAt: string;
 }
@@ -15,6 +15,7 @@ interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   isSuperAdmin: boolean;
+  isAdmin: boolean;
   isLoading: boolean;
   setUser: (user: AuthUser | null) => void;
   logout: () => void;
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const isAdmin = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
 
   useEffect(() => {
     // Only run on client side
@@ -68,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         isSuperAdmin,
+        isAdmin,
         isLoading,
         setUser: handleSetUser,
         logout,
@@ -97,4 +100,9 @@ export const useIsSuperAdmin = (): boolean => {
   const { isSuperAdmin, isLoading } = useAuth();
   // Return false during loading to prevent hydration mismatch
   return isLoading ? false : isSuperAdmin;
+};
+
+export const useIsAdmin = (): boolean => {
+  const { isAdmin, isLoading } = useAuth();
+  return isLoading ? false : isAdmin;
 };
