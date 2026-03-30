@@ -69,8 +69,7 @@ export default function AddAssignmentForm({
   const { mutateAsync: createAssignment } = useCreateAssignment();
 
   const form = useForm<AssignmentFormValues>({
-    // @ts-expect-error - zodResolver type compatibility issue
-    resolver: zodResolver(assignmentSchema),
+    resolver: zodResolver(assignmentSchema as any),
     defaultValues: {
       title: "",
       description: "",

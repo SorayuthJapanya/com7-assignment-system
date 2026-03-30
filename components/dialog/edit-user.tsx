@@ -52,8 +52,7 @@ export default function EditUserDialog({
   const { mutateAsync: updateUser, isPending } = useUpdateUser();
 
   const form = useForm<z.infer<typeof editUserSchema>>({
-    // @ts-expect-error - zodResolver type compatibility issue
-    resolver: zodResolver(editUserSchema),
+    resolver: zodResolver(editUserSchema as any),
     defaultValues: {
       email: "",
       nickname: "",

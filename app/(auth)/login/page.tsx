@@ -32,8 +32,7 @@ export default function LoginPage() {
   const { mutateAsync: loginMutation, isPending: isLoginPending } = useLogin();
 
   const form = useForm({
-    // @ts-expect-error - zodResolver type compatibility issue
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(loginSchema as any),
     defaultValues: {
       username: "",
       password: "",
