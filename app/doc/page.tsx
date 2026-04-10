@@ -19,7 +19,7 @@ interface Param {
 interface ApiResponse {
   status: number;
   description: string;
-  example?: unknown;
+  example?: object | string | number | boolean;
 }
 
 interface Endpoint {
@@ -598,7 +598,7 @@ function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
                     <StatusBadge status={r.status} />
                     <span className="text-sm text-muted-foreground">{r.description}</span>
                   </div>
-                  {r.example && <CodeBlock value={r.example} />}
+                  {r.example !== undefined && <CodeBlock value={r.example} />}
                 </div>
               ))}
             </div>

@@ -1,72 +1,81 @@
 # COM7 Assignment Management System
 
-A modern, full-stack assignment management system built with Next.js, TypeScript, and PostgreSQL. This system provides comprehensive assignment creation, tracking, and review capabilities with secure user authentication.
+A modern, full-stack assignment management system built with Next.js, TypeScript, and PostgreSQL. The system provides assignment creation, tracking, and review capabilities with role-based access control, a leaderboard, and a configurable level/badge system.
 
-## 🚀 Features
+## Features
 
 ### Core Functionality
-- **User Authentication**: Secure login, registration, and session management with JWT
-- **Assignment Management**: Create, view, update, and delete assignments
-- **Review System**: Comprehensive assignment review with scoring and feedback
-- **Role-Based Access**: Staff and Super Admin roles with different permissions
-- **File Upload**: Cloudinary integration for assignment submissions
-- **Email Notifications**: SendGrid integration for user notifications
+- **User Authentication** — JWT-based login, registration, and session management
+- **Assignment Management** — Create, view, update, delete, and rebuild assignments
+- **Review System** — Assignment review with scoring, feedback, and approval workflow
+- **Role-Based Access** — Three roles: `STAFF`, `ADMIN`, and `SUPER_ADMIN` with scoped permissions
+- **File Upload** — Cloudinary integration for assignment submissions
+- **Email Notifications** — SendGrid integration for user notifications
 
-### Technical Features
-- **Database**: PostgreSQL with Prisma ORM
-- **API**: RESTful APIs with Next.js App Router
-- **Authentication**: JWT tokens with bcrypt password hashing
-- **File Storage**: Cloudinary for media uploads
-- **Styling**: Tailwind CSS for modern UI
-- **Type Safety**: Full TypeScript implementation
+### Leaderboard
+- All-time and per-month/year leaderboard rankings
+- Animated top-3 podium display
+- Period filtering (Super Admin only)
 
-## 🛠️ Tech Stack
+### Level & Badge System
+- Configurable score-range levels with emoji, name, and custom color
+- Overlap validation on both frontend and backend
+- Level badge displayed on user profiles and leaderboard entries
 
-- **Frontend**: Next.js 16.1.6, React 19.2.3, TypeScript
-- **Backend**: Next.js API Routes, Prisma ORM
-- **Database**: PostgreSQL
-- **Authentication**: JWT, bcryptjs
-- **File Storage**: Cloudinary
-- **Email**: SendGrid
-- **Styling**: Tailwind CSS
-- **Package Manager**: pnpm
+### Dashboard
+- **User Dashboard** — Profile card with level badge, animated score progress bar, personal rank, and KPI stats
+- **Admin Dashboard** — Aggregate KPIs and charts for assignments, scores, and user activity
+- Colorful info grid showing user details
 
-## 📋 Database Schema
+## Tech Stack
 
-The system uses three main entities:
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 16.1.6 (App Router) |
+| Language | TypeScript 5 |
+| UI | React 19, Tailwind CSS v4, shadcn/ui, Recharts |
+| ORM | Prisma 7 |
+| Database | PostgreSQL (via Supabase) |
+| Auth | JWT, bcryptjs |
+| File Storage | Cloudinary |
+| Email | SendGrid |
+| State / Fetching | TanStack React Query v5 |
+| Forms | React Hook Form + Zod |
+| Package Manager | pnpm |
 
-### Users
-- UUID-based identification
-- Username, email, and password authentication
-- Role-based access (STAFF, SUPER_ADMIN)
-- Timestamp tracking
+## Database Schema
 
-### Assignments
-- Complete assignment lifecycle management
-- Support for Individual and Group assignments
-- Deadline tracking and submission management
-- Review status (Pending, Approved, Rejected)
-- Scoring and feedback system
+### User
+- UUID, username (unique), email, nickname, hashed password
+- Role: `STAFF` | `ADMIN` | `SUPER_ADMIN`
 
-### Scores
-- Assignment scoring and review tracking
-- Reviewer assignment and score management
-- Historical score tracking
+### Assignment
+- Full lifecycle: created → submitted → reviewed (Pending / Approved / Rejected)
+- Supports `Individual` and `Group` types
+- Fields: title, description, reward, deadline, submissionUrl, feedback, finalScore
 
-## 🚀 Getting Started
+### Score
+- Links a `User` (recipient) and optional `Assignment`
+- Tracks reviewer, score value, and timestamps
+
+### Level
+- Configurable score ranges with name, emoji, color
+- Used to classify users on the leaderboard and profile cards
+
+## Getting Started
 
 ### Prerequisites
-- Node.js 18+ 
-- PostgreSQL database
-- Cloudinary account (for file uploads)
-- SendGrid account (for emails)
+- Node.js 18+
+- PostgreSQL database (or Supabase project)
+- Cloudinary account
+- SendGrid account
 
 ### Installation
 
 1. **Clone the repository**
 ```bash
 git clone <repository-url>
-cd COM7-Assingment-System/code-base
+cd com7-assignment-system
 ```
 
 2. **Install dependencies**
@@ -74,10 +83,10 @@ cd COM7-Assingment-System/code-base
 pnpm install
 ```
 
-3. **Environment setup**
-Create a `.env` file with the following variables:
+3. **Environment setup** — create a `.env` file:
 ```env
 DATABASE_URL="postgresql://username:password@localhost:5432/dbname"
+DIRECT_URL="postgresql://username:password@localhost:5432/dbname"
 CLOUDINARY_CLOUD_NAME="your-cloud-name"
 CLOUDINARY_API_KEY="your-api-key"
 CLOUDINARY_API_SECRET="your-api-secret"
@@ -91,84 +100,115 @@ npx prisma generate
 npx prisma db push
 ```
 
-5. **Run the development server**
+5. **Seed initial data** (optional)
+```bash
+pnpm seed
+```
+
+6. **Run the development server**
 ```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the app.
 
-## 📚 API Endpoints
+## API Endpoints
 
-### Authentication
-- `POST /api/auth/register` - User registration
-- `POST /api/auth/login` - User login
-- `POST /api/auth/logout` - User logout
-- `GET /api/auth/me` - Get current user
-- `PUT /api/auth/update/[id]` - Update user
-- `DELETE /api/auth/delete/[id]` - Delete user
+### Auth
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/auth/register` | Register a new user |
+| POST | `/api/auth/login` | Login |
+| POST | `/api/auth/logout` | Logout |
+| GET | `/api/auth/me` | Get current user |
+| GET | `/api/auth/get-users` | List all users (Admin+) |
+| PUT | `/api/auth/update/[id]` | Update user |
+| DELETE | `/api/auth/delete/[id]` | Delete user |
 
 ### Assignments
-- `GET /api/assignment` - Get all assignments
-- `POST /api/assignment` - Create assignment
-- `GET /api/assignment/[id]` - Get specific assignment
-- `PUT /api/assignment/[id]` - Update assignment
-- `DELETE /api/assignment/[id]` - Delete assignment
-- `PUT /api/assignment/review/[id]` - Review assignment
-- `POST /api/assignment/submission/[id]` - Submit assignment
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/assignment` | List assignments |
+| POST | `/api/assignment` | Create assignment |
+| GET/PUT/DELETE | `/api/assignment/[id]` | Get / update / delete |
+| POST | `/api/assignment/[id]/rebuild` | Rebuild (reset) assignment |
+| PUT | `/api/assignment/review/[id]` | Review and score |
+| POST | `/api/assignment/submission/[id]` | Submit assignment |
 
-## 🔧 Development
+### Dashboard
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/assignment/dashboard/user` | User KPIs and charts |
+| GET | `/api/assignment/dashboard/admin` | Admin KPIs and charts |
 
-### Available Scripts
-- `pnpm dev` - Start development server
-- `pnpm build` - Build for production
-- `pnpm start` - Start production server
-- `pnpm lint` - Run ESLint
+### Leaderboard
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/leaderboard` | Admin leaderboard (with filters) |
+| GET | `/api/leaderboard/public` | Public leaderboard |
 
-### Database Management
+### Levels
+| Method | Path | Description |
+|---|---|---|
+| GET/POST | `/api/level` | List / create levels |
+| PUT/DELETE | `/api/level/[id]` | Update / delete level |
+
+## Available Scripts
+
 ```bash
-npx prisma studio    # Open Prisma Studio
-npx prisma generate  # Generate Prisma client
-npx prisma db push   # Push schema to database
-npx prisma migrate   # Run database migrations
+pnpm dev        # Start development server
+pnpm build      # Build for production
+pnpm start      # Start production server
+pnpm lint       # Run ESLint
+pnpm seed       # Seed the database
 ```
 
-## 🏗️ Project Structure
+## Database Management
+
+```bash
+npx prisma studio     # Open Prisma Studio GUI
+npx prisma generate   # Regenerate Prisma client
+npx prisma db push    # Push schema changes to the database
+npx prisma migrate    # Run migrations
+```
+
+## Project Structure
 
 ```
 ├── app/
-│   ├── api/                 # API routes
-│   │   ├── auth/           # Authentication endpoints
-│   │   └── assignment/     # Assignment endpoints
-│   ├── generated/          # Prisma generated files
-│   └── layout.tsx          # Root layout
-├── components/             # React components
-├── lib/                   # Utility libraries
-│   ├── auth.ts           # Authentication utilities
-│   ├── cloudinary.ts     # Cloudinary config
-│   ├── middleware.ts     # Next.js middleware
-│   └── prisma.ts         # Prisma client
-├── prisma/               # Database schema
-├── types/                # TypeScript types
-└── public/               # Static assets
+│   ├── (main)/                  # Authenticated app pages
+│   │   ├── dashboard/           # User & admin dashboard
+│   │   ├── assignment/          # Assignment list, add, manage, review
+│   │   ├── leaderboard/         # Leaderboard page
+│   │   ├── level-management/    # Level CRUD page (Super Admin)
+│   │   └── user-management/     # User management (Super Admin)
+│   └── api/                     # API route handlers
+│       ├── auth/                # Auth endpoints
+│       ├── assignment/          # Assignment + dashboard endpoints
+│       ├── leaderboard/         # Leaderboard endpoints
+│       └── level/               # Level endpoints
+├── components/
+│   ├── dashboard/               # Profile card, charts, KPI grid
+│   ├── leaderboard/             # Podium card, table, filters, skeleton
+│   ├── level-management/        # Level table, form, dialogs, utils
+│   ├── shared/                  # LevelBadge and other shared UI
+│   └── ui/                      # shadcn/ui primitives
+├── hooks/                       # React Query hooks
+├── services/                    # API call functions
+├── types/                       # TypeScript interfaces
+├── contexts/                    # Auth context
+├── prisma/                      # Schema and seed file
+└── lib/                         # Prisma client, auth, middleware
 ```
 
-## 🔐 Security Features
+## Security
 
-- **Password Hashing**: bcrypt for secure password storage
-- **JWT Authentication**: Secure token-based authentication
-- **Input Validation**: Comprehensive API input validation
-- **CORS Protection**: Proper CORS configuration
-- **Environment Variables**: Secure configuration management
+- Passwords hashed with **bcrypt**
+- **JWT** tokens stored in HTTP-only cookies
+- All API routes validate the token via `isAuthorize` middleware
+- Role checks enforced server-side on sensitive endpoints
+- Input validation on all create/update routes
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
