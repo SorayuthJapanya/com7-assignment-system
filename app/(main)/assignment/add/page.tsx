@@ -3,7 +3,7 @@
 import AddAssignmentForm from "@/components/form/add-assignment-form";
 import Header from "@/components/header";
 import { useGetUsers } from "@/hooks/use-auth";
-import { useMemo } from "react";
+import { useMemo, Suspense } from "react";
 
 export default function AddAssignmentPage() {
   const { data: users, isLoading } = useGetUsers({ search: "" });
@@ -25,7 +25,9 @@ export default function AddAssignmentPage() {
         <p>Loading...</p>
       ) : (
         <div className="w-full max-w-2xl">
-          <AddAssignmentForm allUsernames={allUsernames} />
+          <Suspense fallback={<p>Loading...</p>}>
+            <AddAssignmentForm allUsernames={allUsernames} />
+          </Suspense>
         </div>
       )}
     </div>

@@ -5,7 +5,7 @@ import { UserDashboardKPIs } from "@/types/dashboard";
 import { useGetLevels } from "@/hooks/use-level";
 import { usePublicLeaderboard } from "@/hooks/use-leaderboard";
 import { ILevel } from "@/types/level";
-import { FileText, Medal, Shield, Star, TrendingUp } from "lucide-react";
+import { FileText, Medal, Shield, Star, TrendingUp, BarChart2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface ProfileCardProps {
@@ -159,37 +159,44 @@ export default function ProfileCard({ user, kpis }: ProfileCardProps) {
           </div>
 
           {/* Right: Quick KPI Highlights */}
-          <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-3 sm:flex-nowrap sm:justify-end sm:gap-x-4">
             <QuickStat
               icon={<Medal className="size-4" />}
               value={myRank ? `#${myRank}` : "—"}
               label="Rank"
               colorClass="text-rose-400"
             />
-            <div className="h-10 w-px bg-border/50" />
+            <div className="hidden h-10 w-px bg-border/50 sm:block" />
             <QuickStat
               icon={<TrendingUp className="size-4" />}
               value={kpis?.totalAssignments?.toString() || "0"}
               label="Assignments"
               colorClass="text-blue-400"
             />
-            <div className="h-10 w-px bg-border/50" />
+            <div className="hidden h-10 w-px bg-border/50 sm:block" />
+            <QuickStat
+              icon={<FileText className="size-4" />}
+              value={
+                kpis && kpis.totalAssignments > 0
+                  ? `${kpis.totalApproved}`
+                  : "0"
+              }
+              label="Approval"
+              colorClass="text-primary"
+            />
+            <div className="hidden h-10 w-px bg-border/50 sm:block" />
             <QuickStat
               icon={<Star className="size-4" />}
               value={kpis?.totalScore?.toString() || "0"}
               label="Score"
               colorClass="text-amber-400"
             />
-            <div className="h-10 w-px bg-border/50" />
+            <div className="hidden h-10 w-px bg-border/50 sm:block" />
             <QuickStat
-              icon={<FileText className="size-4" />}
-              value={
-                kpis && kpis.totalAssignments > 0
-                  ? `${Math.round((kpis.totalApproved / kpis.totalAssignments) * 100)}%`
-                  : "0%"
-              }
-              label="Approval"
-              colorClass="text-primary"
+              icon={<BarChart2 className="size-4" />}
+              value={kpis?.avgScore?.toString() || "0"}
+              label="Avg Score"
+              colorClass="text-emerald-400"
             />
           </div>
         </div>

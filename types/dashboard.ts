@@ -98,6 +98,7 @@ export interface UserDashboardKPIs {
   totalApproved: number;
   totalRejected: number;
   totalScore: number;
+  avgScore: number;
 }
 
 export interface UserChartsResponse {

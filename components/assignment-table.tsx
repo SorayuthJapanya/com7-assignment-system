@@ -17,7 +17,7 @@ import { useDeleteAssignment } from "@/hooks/use-assignment";
 import { useState } from "react";
 import ManageAssignment from "@/components/dialog/manage-assignment";
 import EditAssignment from "./dialog/edit-assignment";
-import RebuildAssignment from "./dialog/rebuild-assignment";
+import { useRouter } from "next/navigation";
 
 interface AssignmentTableProps {
   assignments: IAssignment[];
@@ -25,10 +25,10 @@ interface AssignmentTableProps {
 
 export default function AssignmentTable({ assignments }: AssignmentTableProps) {
   const { mutateAsync: deleteAssignment } = useDeleteAssignment();
+  const router = useRouter();
   const [selectedAssignment, setSelectedAssignment] =
     useState<IAssignment | null>(null);
   const [editAssignment, setEditAssignment] = useState<IAssignment | null>(null);
-  const [rebuildAssignment, setRebuildAssignment] = useState<IAssignment | null>(null);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -48,6 +48,17 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
   const handleEdit = (assignment: IAssignment) => {
     setSelectedAssignment(null);
     setEditAssignment(assignment);
+  };
+
+  const handleRebuild = (assignment: IAssignment) => {
+    const params = new URLSearchParams({
+      title: assignment.title,
+      description: assignment.description,
+      type: assignment.type,
+      assignTo: assignment.members.join(","),
+      reward: String(assignment.reward),
+    });
+    router.push(`/assignment/add?${params.toString()}`);
   };
 
   const handleDelete = async (id: string) => {
@@ -146,7 +157,7 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
                       <Button
                         variant="default"
                         size="icon"
-                        onClick={() => setRebuildAssignment(assignment)}
+                        onClick={() => handleRebuild(assignment)}
                         className="h-8 w-8 cursor-pointer"
                         title="Rebuild"
                       >
@@ -180,11 +191,6 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
       <EditAssignment
         selectedAssignment={editAssignment}
         setSelectedAssignment={setEditAssignment}
-      />
-
-      <RebuildAssignment
-        assignment={rebuildAssignment}
-        onClose={() => setRebuildAssignment(null)}
       />
     </>
   );

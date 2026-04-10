@@ -41,7 +41,7 @@ export default function AssignmentCard({
       className="rounded-xl hover:shadow-lg hover:scale-105 hover:shadow-primary/20 transition-all duration-200 active:scale-95 cursor-pointer justify-between"
       onClick={() => onSelected(assignment)}
     >
-      <CardHeader>
+      <CardHeader className="relative">
         <div className="flex justify-between items-start gap-4">
           <div>
             <CardTitle className="text-lg line-clamp-1">
@@ -55,6 +55,12 @@ export default function AssignmentCard({
                 <span className="font-medium text-foreground">Assign By:</span>
                 {assignment.createdBy}
               </div>
+              {assignment.assignTo && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/40 border px-2.5 py-1 rounded-md">
+                  <span className="font-medium text-foreground">Assigned To:</span>
+                  {assignment.assignTo}
+                </div>
+              )}
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/40 border px-2.5 py-1 rounded-md">
                 <span className="font-medium text-foreground">Type:</span>
                 {assignment.type === "Individual" ? (
@@ -72,11 +78,13 @@ export default function AssignmentCard({
               )}
             </div>
           </div>
-          <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap">
-            <Coins className="w-3 h-3" />
-            {assignment.finalScore
-              ? `Your Score: ${assignment.finalScore}`
-              : `Reward: ${assignment.reward}`}
+          <div className="absolute top-0 right-4">
+            <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap">
+              <Coins className="w-3 h-3" />
+              {assignment.finalScore
+                ? `Your Score: ${assignment.finalScore}`
+                : `Reward: ${assignment.reward}`}
+            </div>
           </div>
         </div>
       </CardHeader>

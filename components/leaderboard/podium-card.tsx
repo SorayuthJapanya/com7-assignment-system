@@ -76,7 +76,7 @@ export default function PodiumCard({ entry, isMe }: PodiumCardProps) {
       ref={ref}
       style={{ transitionDelay: visible ? `${delay}ms` : "0ms" }}
       className={cn(
-        "relative flex flex-col items-center gap-3 rounded-2xl border p-5 mb-6",
+        "relative flex flex-col items-center gap-2 sm:gap-3 rounded-2xl border p-3 sm:p-5 mb-6",
         "transition-all duration-700 ease-out",
         visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10",
         cfg.border,
@@ -84,7 +84,7 @@ export default function PodiumCard({ entry, isMe }: PodiumCardProps) {
         cfg.ring,
         cfg.scale,
         isMe && "ring-2 ring-primary/50",
-        isFirst ? "w-52" : "w-44",
+        isFirst ? "w-full sm:w-52" : "w-full sm:w-44",
       )}
     >
       {isFirst && (
@@ -106,7 +106,7 @@ export default function PodiumCard({ entry, isMe }: PodiumCardProps) {
         className={cn(
           "rounded-full border-4 flex items-center justify-center font-bold text-primary bg-primary/15 shrink-0",
           cfg.border,
-          isFirst ? "size-20 text-2xl" : "size-16 text-xl",
+          isFirst ? "size-12 sm:size-20 text-lg sm:text-2xl" : "size-10 sm:size-16 text-base sm:text-xl",
         )}
       >
         {(entry.nickname || entry.username).slice(0, 2).toUpperCase()}
@@ -114,7 +114,7 @@ export default function PodiumCard({ entry, isMe }: PodiumCardProps) {
 
       {/* Name */}
       <div className="text-center">
-        <p className={cn("font-bold truncate max-w-36", isFirst ? "text-base" : "text-sm")}>
+        <p className={cn("font-bold truncate max-w-24 sm:max-w-36", isFirst ? "text-sm sm:text-base" : "text-xs sm:text-sm")}>
           {entry.nickname || entry.username}
           {isMe && <span className="ml-1 text-xs text-primary font-normal">(You)</span>}
         </p>
@@ -125,7 +125,7 @@ export default function PodiumCard({ entry, isMe }: PodiumCardProps) {
       {entry.level && <LevelBadge level={entry.level} size="sm" />}
 
       {/* Score */}
-      <p className={cn("font-bold tabular-nums", isFirst ? "text-2xl" : "text-xl", cfg.scoreColor)}>
+      <p className={cn("font-bold tabular-nums", isFirst ? "text-lg sm:text-2xl" : "text-base sm:text-xl", cfg.scoreColor)}>
         {entry.totalScore.toLocaleString()}
         <span className="text-xs font-normal text-muted-foreground ml-1">pts</span>
       </p>

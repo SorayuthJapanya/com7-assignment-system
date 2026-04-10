@@ -24,9 +24,9 @@ export async function PUT(
     const { nickname, email, role } = body;
 
     // Validate input
-    if (!nickname && !role) {
+    if (!nickname && !email && !role) {
       return NextResponse.json(
-        { error: "At least one field (nickname or role) must be provided" },
+        { error: "At least one field (nickname, email, or role) must be provided" },
         { status: 400 },
       );
     }
@@ -49,8 +49,8 @@ export async function PUT(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Cannot change other user if you are not SUPER_ADMIN
-    if (existingUser.id === authUser.id && authUser.role !== "SUPER_ADMIN") {
+    // Cannot change another user if you are not SUPER_ADMIN
+    if (existingUser.id !== authUser.id && authUser.role !== "SUPER_ADMIN") {
       return NextResponse.json(
         { error: "Cannot change other user if you are not SUPER_ADMIN" },
         { status: 403 },

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useAuthUser } from "@/hooks/use-current-user";
 import { useLocalPresets } from "@/hooks/use-local-presets";
+import { useSearchParams } from "next/navigation";
 import { ComboboxInput } from "@/components/ui/combobox-input";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -61,6 +62,7 @@ export default function AddAssignmentForm({
   const [open, setOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
 
+  const searchParams = useSearchParams();
   const authUser = useAuthUser();
   const titlePresets = useLocalPresets("title", authUser?.id);
   const descriptionPresets = useLocalPresets("description", authUser?.id);
@@ -68,14 +70,23 @@ export default function AddAssignmentForm({
 
   const { mutateAsync: createAssignment } = useCreateAssignment();
 
+  // Pre-fill values when navigated from Rebuild
+  const prefillTitle = searchParams.get("title") ?? "";
+  const prefillDescription = searchParams.get("description") ?? "";
+  const prefillType = (searchParams.get("type") ?? "Individual") as "Individual" | "Group";
+  const prefillAssignTo = searchParams.get("assignTo")
+    ? searchParams.get("assignTo")!.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+  const prefillReward = Number(searchParams.get("reward") ?? 0);
+
   const form = useForm<AssignmentFormValues>({
     resolver: zodResolver(assignmentSchema),
     defaultValues: {
-      title: "",
-      description: "",
-      type: "Individual",
-      assignTo: [],
-      reward: 0,
+      title: prefillTitle,
+      description: prefillDescription,
+      type: prefillType,
+      assignTo: prefillAssignTo,
+      reward: prefillReward,
       deadline: undefined as unknown as Date,
     },
   });

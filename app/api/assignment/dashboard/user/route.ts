@@ -193,6 +193,9 @@ export async function GET(request: NextRequest) {
         totalApproved,
         totalRejected,
         totalScore: totalScore._sum.finalScore || 0,
+        avgScore: totalApproved > 0
+          ? Math.round(((totalScore._sum.finalScore || 0) / totalApproved) * 10) / 10
+          : 0,
       },
       charts: {
         // Chart 1: Monthly Trend

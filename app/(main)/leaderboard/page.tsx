@@ -62,13 +62,21 @@ export default function LeaderboardPage() {
         <>
           {/* Top 3 Podium */}
           {top3.length > 0 && (
-            <div className="flex justify-center items-end gap-4 pt-6">
+            <div className="w-full flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:items-end sm:gap-4 pt-6">
               {podiumOrder.map((entry) => (
-                <PodiumCard
+                <div
                   key={entry.userId}
-                  entry={entry}
-                  isMe={user?.id === entry.userId}
-                />
+                  className={
+                    entry.rank === 1 ? "w-full sm:w-52 order-1 sm:order-2" :
+                    entry.rank === 2 ? "w-full sm:w-44 order-2 sm:order-1" :
+                    "w-full sm:w-44 order-3 sm:order-3"
+                  }
+                >
+                  <PodiumCard
+                    entry={entry}
+                    isMe={user?.id === entry.userId}
+                  />
+                </div>
               ))}
             </div>
           )}
