@@ -117,14 +117,16 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
                   <TableCell className="text-center font-medium">
                     {index + 1}
                   </TableCell>
-                  <TableCell className="font-medium max-w-[200px] truncate">
+                  <TableCell className="font-medium max-w-[160px] truncate">
                     {assignment.title}
                   </TableCell>
-                  <TableCell className="hidden md:table-cell max-w-[250px] truncate">
+                  <TableCell className="hidden md:table-cell max-w-[200px] truncate">
                     {assignment.description}
                   </TableCell>
                   <TableCell>{assignment.type}</TableCell>
-                  <TableCell>{assignment.createdBy}</TableCell>
+                  <TableCell className="max-w-[150px] truncate">
+                    {assignment.createdBy}
+                  </TableCell>
                   <TableCell className="max-w-[150px] truncate">
                     {assignment.assignTo}
                   </TableCell>

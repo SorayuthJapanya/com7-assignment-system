@@ -44,7 +44,7 @@ export default function AssignmentCard({
       <CardHeader className="relative">
         <div className="flex justify-between items-start gap-4">
           <div>
-            <CardTitle className="text-lg line-clamp-1">
+            <CardTitle className="text-lg line-clamp-1 max-w-38 sm:max-w-50 truncate">
               {assignment.title}
             </CardTitle>
             <CardDescription className="line-clamp-2 mt-2">
