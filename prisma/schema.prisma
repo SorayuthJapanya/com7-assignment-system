@@ -51,6 +51,7 @@ model Assignment {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scores        Score[]
 }
 
 enum Type {
@@ -65,12 +66,27 @@ enum Status {
 }
 
 model Score {
-  id               String   @id @default(uuid())
+  id               String      @id @default(uuid())
   recipient_id     String
-  reviewer         String   @default("")
-  assignment_title String   @default("")
-  score            Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  user             User     @relation(fields: [recipient_id], references: [id], onDelete: Cascade)
+  assignment_id    String?
+  reviewer         String      @default("")
+  assignment_title String      @default("")
+  score            Int         @default(0)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  user             User        @relation(fields: [recipient_id], references: [id], onDelete: Cascade)
+  assignment       Assignment? @relation(fields: [assignment_id], references: [id], onDelete: SetNull)
+}
+
+model Level {
+  id        String   @id @default(uuid())
+  name      String   @db.VarChar(50)
+  emoji     String   @db.VarChar(10)
+  minScore  Int
+  maxScore  Int
+  color     String   @db.VarChar(20)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("levels")
 }

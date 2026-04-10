@@ -89,3 +89,11 @@ export const deleteAssignment = async (
   const response = await axiosInstance.delete(`/api/assignment/${id}`);
   return response.data;
 };
+
+export const rebuildAssignment = async (
+  id: string,
+  deadline: Date,
+): Promise<{ message: string }> => {
+  const response = await axiosInstance.post(`/api/assignment/${id}/rebuild`, { deadline });
+  return response.data;
+};

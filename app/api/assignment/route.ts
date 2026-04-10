@@ -5,15 +5,6 @@ import { getUserByUsername } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NewAssignmentTemplate } from "@/template/new-assignment-template";
 import { format } from "date-fns";
-import constants from "constants";
-
-interface UserWithEmail {
-  id: string;
-  username: string;
-  email: string;
-  nickname: string;
-  role: string;
-}
 
 export async function GET(request: NextRequest) {
   try {

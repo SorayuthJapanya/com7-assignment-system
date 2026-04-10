@@ -3,6 +3,7 @@ import {
   deleteAssignment,
   getAssignment,
   getAssignments,
+  rebuildAssignment,
   reviewAssignment,
   submissionAssignment,
   updateAssignment,
@@ -206,6 +207,36 @@ export const useDeleteAssignment = () => {
       Swal.fire({
         icon: "error",
         title: "Assignment deletion failed",
+        text: error?.response?.data?.error || "Something went wrong",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+  });
+};
+
+export const useRebuildAssignment = () => {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { message: string },
+    AxiosError<AxiosErrorResponse>,
+    { id: string; deadline: Date }
+  >({
+    mutationFn: ({ id, deadline }) => rebuildAssignment(id, deadline),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["assignment"] });
+      Swal.fire({
+        icon: "success",
+        title: res.message || "Assignment rebuilt successfully",
+        text: "A new assignment has been created. 😊",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error) => {
+      Swal.fire({
+        icon: "error",
+        title: "Rebuild failed",
         text: error?.response?.data?.error || "Something went wrong",
         timer: 2000,
         showConfirmButton: false,

@@ -31,89 +31,77 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    
-    // Get query parameters
-    const userId = searchParams.get("userId") || authUser.id;
-    const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString());
-    const month = parseInt(searchParams.get("month") || (new Date().getMonth() + 1).toString());
 
-    // Calculate date range for the specified year and month
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+    // Get query parameters (year and month are optional)
+    const userId = searchParams.get("userId") || authUser.id;
+    const yearParam = searchParams.get("year");
+    const monthParam = searchParams.get("month");
+
+    const year = yearParam ? parseInt(yearParam) : null;
+    const month = monthParam ? parseInt(monthParam) : null;
+
+    // Chart display year (always needed for generate_series)
+    const chartYear = year || new Date().getFullYear();
+
+    // Build date range only when filters are provided
+    let startDate: Date | null = null;
+    let endDate: Date | null = null;
+
+    if (year && month) {
+      startDate = new Date(year, month - 1, 1);
+      endDate = new Date(year, month, 0, 23, 59, 59, 999);
+    } else if (year) {
+      startDate = new Date(year, 0, 1);
+      endDate = new Date(year, 11, 31, 23, 59, 59, 999);
+    }
+
+    // Reusable Prisma ORM date filter
+    const dateWhere = startDate && endDate
+      ? { createdAt: { gte: startDate, lte: endDate } }
+      : {};
 
     // Run queries sequentially to avoid exceeding connection pool limit
-    // KPI 1: Total Assignment (filter by userId, year and month)
+    // KPI 1: Total Assignment (filter by userId, optional year/month)
     const totalAssignments = await prisma.assignment.count({
-      where: {
-        userId: userId,
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
+      where: { userId, ...dateWhere },
     });
 
-    // KPI 2: Total Approve (filter by userId, status = "approved", year and month)
+    // KPI 2: Total Approve (filter by userId, optional year/month)
     const totalApproved = await prisma.assignment.count({
-      where: {
-        userId: userId,
-        status: "Approved",
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
+      where: { userId, status: "Approved", ...dateWhere },
     });
 
-    // KPI 3: Total Reject (filter by userId, status = "rejected", year and month)
+    // KPI 3: Total Reject (filter by userId, optional year/month)
     const totalRejected = await prisma.assignment.count({
-      where: {
-        userId: userId,
-        status: "Rejected",
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
+      where: { userId, status: "Rejected", ...dateWhere },
     });
 
-    // KPI 4: Total Score (filter by userId, year and month)
+    // KPI 4: Total Score (filter by userId, optional year/month)
     const totalScore = await prisma.assignment.aggregate({
-      where: {
-        userId: userId,
-        finalScore: {
-          gt: 0,
-        },
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-      _sum: {
-        finalScore: true,
-      },
+      where: { userId, finalScore: { gt: 0 }, ...dateWhere },
+      _sum: { finalScore: true },
     });
 
-    // Chart 1: Monthly Trend (User's assignment trend over months for selected year)
+    // Chart 1: Monthly Trend (User's assignment trend over months for chartYear)
     const monthlyTrendData = await prisma.$queryRaw<UserMonthlyTrend[]>`
       WITH all_months AS (
-        SELECT 
+        SELECT
           generate_series(
-            MAKE_DATE(${year}, 1, 1),
-            MAKE_DATE(${year}, 12, 1),
+            MAKE_DATE(${chartYear}, 1, 1),
+            MAKE_DATE(${chartYear}, 12, 1),
             INTERVAL '1 month'
           ) as month_start
       ),
       monthly_data AS (
-        SELECT 
+        SELECT
           TO_CHAR("createdAt", 'YYYY-MM') as month,
           COUNT(*) as assigned
-        FROM "Assignment" 
+        FROM "Assignment"
         WHERE "userId" = ${userId}
-          AND EXTRACT(YEAR FROM "createdAt") = ${year}
+          AND EXTRACT(YEAR FROM "createdAt") = ${chartYear}
         GROUP BY TO_CHAR("createdAt", 'YYYY-MM')
       )
-      SELECT 
+      SELECT
         TO_CHAR(am.month_start, 'YYYY-MM') as month,
         COALESCE(md.assigned, 0) as assigned
       FROM all_months am
@@ -122,70 +110,73 @@ export async function GET(request: NextRequest) {
     `;
 
     // Chart 2: Status Distribution (User's assignment status distribution)
-    const statusDistributionData = await prisma.$queryRaw<UserStatusDistribution[]>`
-      WITH total_assignments AS (
-        SELECT COUNT(*) as total
-        FROM "Assignment" 
-        WHERE "userId" = ${userId}
-          AND "createdAt" >= ${startDate} 
-          AND "createdAt" <= ${endDate}
-      )
-      SELECT 
-        'Pending' as name,
-        COUNT(*) as value,
-        ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-      FROM "Assignment" 
-      WHERE "userId" = ${userId}
-        AND status = 'Pending'
-        AND "createdAt" >= ${startDate} 
-        AND "createdAt" <= ${endDate}
-      
-      UNION ALL
-      
-      SELECT 
-        'Approved' as name,
-        COUNT(*) as value,
-        ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-      FROM "Assignment" 
-      WHERE "userId" = ${userId}
-        AND status = 'Approved'
-        AND "createdAt" >= ${startDate} 
-        AND "createdAt" <= ${endDate}
-      
-      UNION ALL
-      
-      SELECT 
-        'Rejected' as name,
-        COUNT(*) as value,
-        ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-      FROM "Assignment" 
-      WHERE "userId" = ${userId}
-        AND status = 'Rejected'
-        AND "createdAt" >= ${startDate} 
-        AND "createdAt" <= ${endDate}
-    `;
+    const statusDistributionData = startDate && endDate
+      ? await prisma.$queryRaw<UserStatusDistribution[]>`
+          WITH total_assignments AS (
+            SELECT COUNT(*) as total FROM "Assignment"
+            WHERE "userId" = ${userId}
+              AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          )
+          SELECT 'Pending' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment"
+          WHERE "userId" = ${userId} AND status = 'Pending'
+            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          UNION ALL
+          SELECT 'Approved' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment"
+          WHERE "userId" = ${userId} AND status = 'Approved'
+            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          UNION ALL
+          SELECT 'Rejected' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment"
+          WHERE "userId" = ${userId} AND status = 'Rejected'
+            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+        `
+      : await prisma.$queryRaw<UserStatusDistribution[]>`
+          WITH total_assignments AS (
+            SELECT COUNT(*) as total FROM "Assignment"
+            WHERE "userId" = ${userId}
+          )
+          SELECT 'Pending' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment"
+          WHERE "userId" = ${userId} AND status = 'Pending'
+          UNION ALL
+          SELECT 'Approved' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment"
+          WHERE "userId" = ${userId} AND status = 'Approved'
+          UNION ALL
+          SELECT 'Rejected' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment"
+          WHERE "userId" = ${userId} AND status = 'Rejected'
+        `;
 
-    // Chart 3: Score By Month (User's total score per month for selected year)
+    // Chart 3: Score By Month (User's total score per month for chartYear)
     const scoreByMonthData = await prisma.$queryRaw<UserScoreByMonth[]>`
       WITH all_months AS (
-        SELECT 
+        SELECT
           generate_series(
-            MAKE_DATE(${year}, 1, 1),
-            MAKE_DATE(${year}, 12, 1),
+            MAKE_DATE(${chartYear}, 1, 1),
+            MAKE_DATE(${chartYear}, 12, 1),
             INTERVAL '1 month'
           ) as month_start
       ),
       monthly_scores AS (
-        SELECT 
+        SELECT
           TO_CHAR(a."createdAt", 'YYYY-MM') as month,
           COALESCE(SUM(a."finalScore"), 0) as score
         FROM "Assignment" a
         WHERE a."userId" = ${userId}
-          AND EXTRACT(YEAR FROM a."createdAt") = ${year}
+          AND EXTRACT(YEAR FROM a."createdAt") = ${chartYear}
           AND a."finalScore" > 0
         GROUP BY TO_CHAR(a."createdAt", 'YYYY-MM')
       )
-      SELECT 
+      SELECT
         TO_CHAR(am.month_start, 'YYYY-MM') as month,
         COALESCE(CAST(ms.score AS NUMERIC), 0) as score
       FROM all_months am
@@ -196,7 +187,7 @@ export async function GET(request: NextRequest) {
     // Format response data
     const response: UserDashboardResponse = {
       role: "USER",
-      period: { year, month, userId },
+      period: { year, month, userId },  // year/month null when not filtered
       kpis: {
         totalAssignments,
         totalApproved,
@@ -206,7 +197,7 @@ export async function GET(request: NextRequest) {
       charts: {
         // Chart 1: Monthly Trend
         monthlyTrend: {
-          title: `Assignment Trend (${year})`,
+          title: `Assignment Trend (${chartYear})`,
           type: "line",
           data: monthlyTrendData.map((item) => ({
             month: item.month,
@@ -235,7 +226,7 @@ export async function GET(request: NextRequest) {
 
         // Chart 3: Score By Month
         scoreByMonth: {
-          title: `Score By Month (${year})`,
+          title: `Score By Month (${chartYear})`,
           type: "line",
           data: scoreByMonthData.map((item) => ({
             month: item.month,

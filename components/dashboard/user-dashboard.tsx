@@ -10,25 +10,16 @@ import { useAuth } from "@/contexts/auth-context";
 import { Skeleton } from "../ui/skeleton";
 
 interface UserDashboardProps {
-  year: number;
-  month: number;
+  year: number | null;
+  month: number | null;
 }
 
 export default function UserDashboard({ year, month }: UserDashboardProps) {
   const { user } = useAuth();
   const { data: dashboardData, isLoading: isDashboardLoading } =
     useUserDashboard({ year, month });
-  const { data: assignments, isLoading: isAssignmentsLoading } =
-    useGetAssignments({
-      search: "",
-      status: "not-submit",
-      type: "all",
-      page: 1,
-      limit: 5,
-      myAssignments: true,
-    });
 
-  if (isDashboardLoading || isAssignmentsLoading) {
+  if (isDashboardLoading) {
     return <DashboardSkeleton />;
   }
 

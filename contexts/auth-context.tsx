@@ -96,10 +96,10 @@ export const useAuthUser = (): AuthUser | null => {
   return isLoading ? null : user;
 };
 
-export const useIsSuperAdmin = (): boolean => {
+export const useIsSuperAdmin = (): { isSuperAdmin: boolean; isLoading: boolean } => {
   const { isSuperAdmin, isLoading } = useAuth();
   // Return false during loading to prevent hydration mismatch
-  return isLoading ? false : isSuperAdmin;
+  return { isSuperAdmin, isLoading };
 };
 
 export const useIsAdmin = (): boolean => {

@@ -86,7 +86,7 @@ export default function MyAssignmentPage() {
   };
 
   return (
-    <div className="w-full max-w-8xl mx-auto space-y-8">
+    <div className="w-full max-w-7xl xl:max-w-360 mx-auto space-y-8">
       <div className="w-full flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-2">
         <Header
           title={"My Assignment"}

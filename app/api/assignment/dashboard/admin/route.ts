@@ -34,178 +34,187 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
 
-    // Get query parameters
-    const year = parseInt(
-      searchParams.get("year") || new Date().getFullYear().toString(),
-    );
-    const month = parseInt(
-      searchParams.get("month") || (new Date().getMonth() + 1).toString(),
-    );
+    // Get optional query parameters
+    const yearParam = searchParams.get("year");
+    const monthParam = searchParams.get("month");
 
-    // Calculate date range for the specified year and month
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+    const year = yearParam ? parseInt(yearParam) : null;
+    const month = monthParam ? parseInt(monthParam) : null;
+
+    // Chart display year (always needed for generate_series)
+    const chartYear = year || new Date().getFullYear();
+
+    // Build date range only when filters are provided
+    let startDate: Date | null = null;
+    let endDate: Date | null = null;
+
+    if (year && month) {
+      startDate = new Date(year, month - 1, 1);
+      endDate = new Date(year, month, 0, 23, 59, 59, 999);
+    } else if (year) {
+      startDate = new Date(year, 0, 1);
+      endDate = new Date(year, 11, 31, 23, 59, 59, 999);
+    }
+
+    // Reusable Prisma ORM date filter
+    const dateWhere = startDate && endDate
+      ? { createdAt: { gte: startDate, lte: endDate } }
+      : {};
 
     // Run queries sequentially to avoid exceeding connection pool limit
     // KPI 1: Total Assignments
     const totalAssignments = await prisma.assignment.count({
-      where: {
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
+      where: { ...dateWhere },
     });
 
     // KPI 2: Total Submitted
-    const totalSubmittedRaw = await prisma.$queryRaw`
-      SELECT COUNT(*) as count 
-      FROM "Assignment" 
-      WHERE "submitAt" > "createdAt" 
-      AND "createdAt" >= ${startDate} 
-      AND "createdAt" <= ${endDate}
-    `;
+    const totalSubmittedRaw = startDate && endDate
+      ? await prisma.$queryRaw`
+          SELECT COUNT(*) as count
+          FROM "Assignment"
+          WHERE "submitAt" > "createdAt"
+            AND "createdAt" >= ${startDate}
+            AND "createdAt" <= ${endDate}
+        `
+      : await prisma.$queryRaw`
+          SELECT COUNT(*) as count
+          FROM "Assignment"
+          WHERE "submitAt" > "createdAt"
+        `;
 
     // KPI 3: Total Approved
     const totalApproved = await prisma.assignment.count({
-      where: {
-        status: "Approved",
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
+      where: { status: "Approved", ...dateWhere },
     });
 
     // KPI 4: Average Score
     const averageScore = await prisma.assignment.aggregate({
-      where: {
-        finalScore: {
-          gt: 0,
-        },
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-      _avg: {
-        finalScore: true,
-      },
+      where: { finalScore: { gt: 0 }, ...dateWhere },
+      _avg: { finalScore: true },
     });
 
     // KPI 5: Late Submissions
     const lateSubmissions = await prisma.assignment.count({
       where: {
-        submitAt: {
-          gt: prisma.assignment.fields.deadline,
-        },
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
+        submitAt: { gt: prisma.assignment.fields.deadline },
+        ...dateWhere,
       },
     });
 
     // Chart 1: User Assignment Status Overview
-    const userAssignmentData = await prisma.$queryRaw<UserAssignmentStatus[]>`
-      SELECT 
-        u.username,
-        u.nickname,
-        COUNT(CASE WHEN a."submitAt" > a."createdAt" THEN 1 END) as submitted,
-        COUNT(CASE WHEN a.status = 'Approved' THEN 1 END) as approved,
-        COUNT(CASE WHEN a.status = 'Rejected' THEN 1 END) as rejected,
-        COUNT(CASE WHEN a.status = 'Pending' THEN 1 END) as pending
-      FROM "User" u
-      LEFT JOIN "Assignment" a ON u.id = a."userId" 
-        AND a."createdAt" >= ${startDate} 
-        AND a."createdAt" <= ${endDate}
-      WHERE u.username IS NOT NULL
-      GROUP BY u.id, u.username, u.nickname
-      ORDER BY u.username
-    `;
+    const userAssignmentData = startDate && endDate
+      ? await prisma.$queryRaw<UserAssignmentStatus[]>`
+          SELECT
+            u.username,
+            u.nickname,
+            COUNT(CASE WHEN a."submitAt" > a."createdAt" THEN 1 END) as submitted,
+            COUNT(CASE WHEN a.status = 'Approved' THEN 1 END) as approved,
+            COUNT(CASE WHEN a.status = 'Rejected' THEN 1 END) as rejected,
+            COUNT(CASE WHEN a.status = 'Pending' THEN 1 END) as pending
+          FROM "User" u
+          LEFT JOIN "Assignment" a ON u.id = a."userId"
+            AND a."createdAt" >= ${startDate}
+            AND a."createdAt" <= ${endDate}
+          WHERE u.username IS NOT NULL
+          GROUP BY u.id, u.username, u.nickname
+          ORDER BY u.username
+        `
+      : await prisma.$queryRaw<UserAssignmentStatus[]>`
+          SELECT
+            u.username,
+            u.nickname,
+            COUNT(CASE WHEN a."submitAt" > a."createdAt" THEN 1 END) as submitted,
+            COUNT(CASE WHEN a.status = 'Approved' THEN 1 END) as approved,
+            COUNT(CASE WHEN a.status = 'Rejected' THEN 1 END) as rejected,
+            COUNT(CASE WHEN a.status = 'Pending' THEN 1 END) as pending
+          FROM "User" u
+          LEFT JOIN "Assignment" a ON u.id = a."userId"
+          WHERE u.username IS NOT NULL
+          GROUP BY u.id, u.username, u.nickname
+          ORDER BY u.username
+        `;
 
     // Chart 2: Status Distribution
-    const statusDistributionData = await prisma.$queryRaw<StatusDistribution[]>`
-      WITH total_assignments AS (
-        SELECT COUNT(*) as total
-        FROM "Assignment" 
-        WHERE "createdAt" >= ${startDate} 
-          AND "createdAt" <= ${endDate}
-      )
-      SELECT 
-        'Submitted' as name,
-        COUNT(*) as value,
-        ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-      FROM "Assignment" 
-      WHERE "submitAt" > "createdAt" 
-        AND "createdAt" >= ${startDate} 
-        AND "createdAt" <= ${endDate}
-      
-      UNION ALL
-      
-      SELECT 
-        'Approved' as name,
-        COUNT(*) as value,
-        ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-      FROM "Assignment" 
-      WHERE status = 'Approved'
-        AND "createdAt" >= ${startDate} 
-        AND "createdAt" <= ${endDate}
-      
-      UNION ALL
-      
-      SELECT 
-        'Rejected' as name,
-        COUNT(*) as value,
-        ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-      FROM "Assignment" 
-      WHERE status = 'Rejected'
-        AND "createdAt" >= ${startDate} 
-        AND "createdAt" <= ${endDate}
-      
-      UNION ALL
-      
-      SELECT 
-        'Late Submit' as name,
-        COUNT(*) as value,
-        ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-      FROM "Assignment" 
-      WHERE "submitAt" > "deadline"
-        AND "submitAt" > "createdAt"
-        AND "createdAt" >= ${startDate} 
-        AND "createdAt" <= ${endDate}
-      
-      UNION ALL
-      
-      SELECT 
-        'Pending' as name,
-        COUNT(*) as value,
-        ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-      FROM "Assignment" 
-      WHERE status = 'Pending'
-        AND "createdAt" >= ${startDate} 
-        AND "createdAt" <= ${endDate}
-    `;
+    const statusDistributionData = startDate && endDate
+      ? await prisma.$queryRaw<StatusDistribution[]>`
+          WITH total_assignments AS (
+            SELECT COUNT(*) as total FROM "Assignment"
+            WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          )
+          SELECT 'Submitted' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment"
+          WHERE "submitAt" > "createdAt"
+            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          UNION ALL
+          SELECT 'Approved' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment"
+          WHERE status = 'Approved'
+            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          UNION ALL
+          SELECT 'Rejected' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment"
+          WHERE status = 'Rejected'
+            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          UNION ALL
+          SELECT 'Late Submit' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment"
+          WHERE "submitAt" > "deadline" AND "submitAt" > "createdAt"
+            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          UNION ALL
+          SELECT 'Pending' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment"
+          WHERE status = 'Pending'
+            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+        `
+      : await prisma.$queryRaw<StatusDistribution[]>`
+          WITH total_assignments AS (
+            SELECT COUNT(*) as total FROM "Assignment"
+          )
+          SELECT 'Submitted' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment" WHERE "submitAt" > "createdAt"
+          UNION ALL
+          SELECT 'Approved' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment" WHERE status = 'Approved'
+          UNION ALL
+          SELECT 'Rejected' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment" WHERE status = 'Rejected'
+          UNION ALL
+          SELECT 'Late Submit' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment" WHERE "submitAt" > "deadline" AND "submitAt" > "createdAt"
+          UNION ALL
+          SELECT 'Pending' as name, COUNT(*) as value,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
+          FROM "Assignment" WHERE status = 'Pending'
+        `;
 
     // Chart 3: Monthly Trend - Only Approved Assignments (All Months)
     const monthlyTrendData = await prisma.$queryRaw<MonthlyTrend[]>`
       WITH all_months AS (
-        SELECT 
+        SELECT
           generate_series(
-            MAKE_DATE(${year}, 1, 1),
-            MAKE_DATE(${year}, 12, 1),
+            MAKE_DATE(${chartYear}, 1, 1),
+            MAKE_DATE(${chartYear}, 12, 1),
             INTERVAL '1 month'
           ) as month_start
       ),
       monthly_data AS (
-        SELECT 
+        SELECT
           TO_CHAR(a."createdAt", 'YYYY-MM') as month,
           COUNT(CASE WHEN a.status = 'Approved' THEN 1 END) as approved
         FROM "Assignment" a
-        WHERE EXTRACT(YEAR FROM a."createdAt") = ${year}
+        WHERE EXTRACT(YEAR FROM a."createdAt") = ${chartYear}
         GROUP BY TO_CHAR(a."createdAt", 'YYYY-MM')
       )
-      SELECT 
+      SELECT
         TO_CHAR(am.month_start, 'YYYY-MM') as month,
         COALESCE(md.approved, 0) as approved
       FROM all_months am
@@ -216,24 +225,24 @@ export async function GET(request: NextRequest) {
     // Chart 4: Average Score by Month
     const averageScoreByMonthData = await prisma.$queryRaw<AverageScoreByMonth[]>`
       WITH all_months AS (
-        SELECT 
+        SELECT
           generate_series(
-            MAKE_DATE(${year}, 1, 1),
-            MAKE_DATE(${year}, 12, 1),
+            MAKE_DATE(${chartYear}, 1, 1),
+            MAKE_DATE(${chartYear}, 12, 1),
             INTERVAL '1 month'
           ) as month_start
       ),
       monthly_scores AS (
-        SELECT 
+        SELECT
           TO_CHAR(a."createdAt", 'YYYY-MM') as month,
           AVG(a."finalScore") as averageScore
         FROM "Assignment" a
-        WHERE EXTRACT(YEAR FROM a."createdAt") = ${year}
+        WHERE EXTRACT(YEAR FROM a."createdAt") = ${chartYear}
           AND a."finalScore" > 0
           AND a.status = 'Approved'
         GROUP BY TO_CHAR(a."createdAt", 'YYYY-MM')
       )
-      SELECT 
+      SELECT
         TO_CHAR(am.month_start, 'YYYY-MM') as month,
         COALESCE(CAST(ms.averageScore AS NUMERIC), 0) as "averageScore"
       FROM all_months am
@@ -262,7 +271,7 @@ export async function GET(request: NextRequest) {
     // Format response data
     const response: AdminDashboardResponse = {
       role: "SUPER_ADMIN",
-      period: { year, month },
+      period: { year, month },  // null when not filtered
       kpis: {
         totalAssignments,
         totalSubmitted,
@@ -311,7 +320,7 @@ export async function GET(request: NextRequest) {
 
         // Chart 3: Monthly Trend
         monthlyTrend: {
-          title: "Tasks Completed By Month",
+          title: `Tasks Completed By Month (${chartYear})`,
           type: "bar",
           data: monthlyTrendData.map((item) => ({
             month: item.month,

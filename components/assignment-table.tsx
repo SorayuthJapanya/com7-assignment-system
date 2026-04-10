@@ -11,12 +11,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, Trash2, RefreshCw } from "lucide-react";
 import Swal from "sweetalert2";
 import { useDeleteAssignment } from "@/hooks/use-assignment";
 import { useState } from "react";
 import ManageAssignment from "@/components/dialog/manage-assignment";
 import EditAssignment from "./dialog/edit-assignment";
+import RebuildAssignment from "./dialog/rebuild-assignment";
 
 interface AssignmentTableProps {
   assignments: IAssignment[];
@@ -26,9 +27,8 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
   const { mutateAsync: deleteAssignment } = useDeleteAssignment();
   const [selectedAssignment, setSelectedAssignment] =
     useState<IAssignment | null>(null);
-  const [editAssignment, setEditAssignment] = useState<IAssignment | null>(
-    null,
-  );
+  const [editAssignment, setEditAssignment] = useState<IAssignment | null>(null);
+  const [rebuildAssignment, setRebuildAssignment] = useState<IAssignment | null>(null);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -78,7 +78,7 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[50px] text-center">No.</TableHead>
+              <TableHead className="w-12.5 text-center">No.</TableHead>
               <TableHead>Title</TableHead>
               <TableHead className="hidden md:table-cell">
                 Description
@@ -88,7 +88,6 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
               <TableHead>Assign To</TableHead>
               <TableHead className="text-center">Deadline</TableHead>
               <TableHead className="text-center">Status</TableHead>
-              <TableHead className="text-center">Created At</TableHead>
               <TableHead className="text-center">Action</TableHead>
             </TableRow>
           </TableHeader>
@@ -119,7 +118,7 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
                     {assignment.assignTo}
                   </TableCell>
                   <TableCell className="text-center">
-                    {format(new Date(assignment.deadline), "dd/MM/yyyy")}
+                    {format(new Date(assignment.deadline), "dd/MM/yyyy HH:mm")}
                   </TableCell>
                   <TableCell className="text-center">
                     <span
@@ -131,12 +130,6 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
                     </span>
                   </TableCell>
                   <TableCell className="text-center">
-                    {format(
-                      new Date(assignment.createdAt),
-                      "dd/MM/yyyy HH:mm:ss",
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
                     <div
                       className="flex justify-center items-center gap-2"
                       onClick={(e) => e.stopPropagation()}
@@ -146,14 +139,25 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
                         size="icon"
                         onClick={() => handleEdit(assignment)}
                         className="h-8 w-8 cursor-pointer"
+                        title="Edit"
                       >
                         <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="icon"
+                        onClick={() => setRebuildAssignment(assignment)}
+                        className="h-8 w-8 cursor-pointer"
+                        title="Rebuild"
+                      >
+                        <RefreshCw className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="destructive"
                         size="icon"
                         onClick={() => handleDelete(assignment.id)}
                         className="h-8 w-8 cursor-pointer"
+                        title="Delete"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -176,6 +180,11 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
       <EditAssignment
         selectedAssignment={editAssignment}
         setSelectedAssignment={setEditAssignment}
+      />
+
+      <RebuildAssignment
+        assignment={rebuildAssignment}
+        onClose={() => setRebuildAssignment(null)}
       />
     </>
   );

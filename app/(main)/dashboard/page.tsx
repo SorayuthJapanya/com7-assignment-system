@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useIsSuperAdmin } from "@/hooks/use-current-user";
-import { Filter } from "lucide-react";
+import { Filter, X } from "lucide-react";
 import { useState } from "react";
 
 const months = [
@@ -40,14 +40,19 @@ const currentYear = new Date().getFullYear();
 const years = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
 
 export default function DashboardPage() {
-  const isSuperAdmin = useIsSuperAdmin();
+  const { isSuperAdmin, isLoading } = useIsSuperAdmin();
 
-  // set default year and month
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [year, setYear] = useState<number | null>(null);
+  const [month, setMonth] = useState<number | null>(null);
+
+  const filterLabel = year
+    ? month
+      ? `${months.find((m) => m.value === month)?.label} ${year}`
+      : `All ${year}`
+    : "All Time";
 
   return (
-    <div className="w-full max-w-8xl mx-auto space-y-8">
+    <div className="w-full max-w-7xl xl:max-w-360 mx-auto space-y-8">
       <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-2">
         <Header
           title={isSuperAdmin ? "Overview Dashboard" : "Dashboard"}
@@ -62,7 +67,7 @@ export default function DashboardPage() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline">
-              <Filter /> {months.find((m) => m.value === month)?.label} {year}
+              <Filter /> {filterLabel}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
@@ -74,8 +79,11 @@ export default function DashboardPage() {
               <DropdownMenuPortal>
                 <DropdownMenuSubContent>
                   <DropdownMenuRadioGroup
-                    value={year.toString()}
-                    onValueChange={(v) => setYear(parseInt(v))}
+                    value={year?.toString() ?? ""}
+                    onValueChange={(v) => {
+                      setYear(parseInt(v));
+                      setMonth(null);
+                    }}
                   >
                     {years.map((y) => (
                       <DropdownMenuRadioItem key={y} value={y.toString()}>
@@ -88,11 +96,11 @@ export default function DashboardPage() {
             </DropdownMenuSub>
 
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Month</DropdownMenuSubTrigger>
+              <DropdownMenuSubTrigger disabled={!year}>Month</DropdownMenuSubTrigger>
               <DropdownMenuPortal>
                 <DropdownMenuSubContent>
                   <DropdownMenuRadioGroup
-                    value={month.toString()}
+                    value={month?.toString() ?? ""}
                     onValueChange={(v) => setMonth(parseInt(v))}
                   >
                     {months.map((m) => (
@@ -107,11 +115,27 @@ export default function DashboardPage() {
                 </DropdownMenuSubContent>
               </DropdownMenuPortal>
             </DropdownMenuSub>
+
+            {(year || month) && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel
+                  className="flex items-center gap-1 cursor-pointer font-normal text-muted-foreground hover:text-foreground"
+                  onClick={() => { setYear(null); setMonth(null); }}
+                >
+                  <X className="w-3 h-3" /> Clear filter
+                </DropdownMenuLabel>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
-      {isSuperAdmin ? (
+      {isLoading ? (
+        <div className="flex items-center">
+          <span className="text-muted-foreground">Loading dashboard...</span>
+        </div>
+      ) : isSuperAdmin ? (
         <SuperAdminDashboard year={year} month={month} />
       ) : (
         <UserDashboard year={year} month={month} />

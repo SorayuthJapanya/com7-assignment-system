@@ -1,7 +1,7 @@
 // Dashboard Types
 export interface DashboardPeriod {
-  year: number;
-  month: number;
+  year?: number | null;
+  month?: number | null;
 }
 
 export interface UserAssignmentStatus {

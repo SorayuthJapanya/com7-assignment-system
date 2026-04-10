@@ -46,14 +46,14 @@ export const MonthlyTrendChart = ({
   }));
 
   return (
-    <Card className="flex flex-col rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all duration-200">
+    <Card className="h-full flex flex-col rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all duration-200">
       <CardHeader className="items-center pb-0">
         <CardTitle>Tasks Completed By Month</CardTitle>
         <CardDescription>Approved assignments per month</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 pb-0">
-        <ChartContainer config={chartConfig} className="max-h-64 w-full">
-          <ResponsiveContainer width="100%" height={250}>
+        <ChartContainer config={chartConfig} className="max-h-74 w-full">
+          <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={transformedData}
               margin={{ top: 30, right: 30, left: -20, bottom: 5 }}

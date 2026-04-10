@@ -4,14 +4,12 @@ import { useMemo } from "react";
 import { UserAssignmentStatusChart } from "../chart/user-assign-status";
 import { StatusDistributionChart } from "../chart/status-distribution";
 import { MonthlyTrendChart } from "../chart/monthly-trend";
-import { AverageScoreByMonthChart } from "../chart/average-score-by-month";
+import LeaderboardCard from "./leaderboard-card";
 import {
   UserAssignmentStatus,
   StatusDistribution,
   ChartData,
   MonthlyTrend,
-  UserScoreSummary,
-  AverageScoreByMonth,
 } from "@/types/dashboard";
 
 interface ChartsSectionProps {
@@ -19,12 +17,10 @@ interface ChartsSectionProps {
     userAssignmentStatus?: ChartData<UserAssignmentStatus>;
     statusDistribution?: ChartData<StatusDistribution>;
     monthlyTrend?: ChartData<MonthlyTrend>;
-    averageScoreByMonth?: ChartData<AverageScoreByMonth>;
   };
 }
 
 export default function ChartsSection({ charts }: ChartsSectionProps) {
-  // Memoize chart data to prevent unnecessary re-renders
   const userAssignmentData = useMemo(
     () => charts?.userAssignmentStatus?.data || [],
     [charts?.userAssignmentStatus?.data],
@@ -43,37 +39,25 @@ export default function ChartsSection({ charts }: ChartsSectionProps) {
     [charts?.monthlyTrend?.data],
   );
 
-  const averageScoreByMonthData = useMemo(
-    () => charts?.averageScoreByMonth?.data || [],
-    [charts?.averageScoreByMonth?.data],
-  );
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Row 1: User Assignment Status (1/2) | Assignment Status Distribution (1/2) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* User Assignment Status Chart */}
-        {charts?.userAssignmentStatus && (
-          <UserAssignmentStatusChart dashboardData={userAssignmentData} />
-        )}
-
-        {/* Status Distribution Chart */}
+        <UserAssignmentStatusChart dashboardData={userAssignmentData} />
         <StatusDistributionChart
           data={statusDistributionData.data}
           colors={statusDistributionData.colors}
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Average Score By Month Chart */}
-        {charts?.averageScoreByMonth && (
-          <AverageScoreByMonthChart dashboardData={averageScoreByMonthData} />
-        )}
-        
-        {/* Monthly Trend Chart */}
-        {charts?.monthlyTrend && (
+      {/* Row 2: Monthly Trend Line (2/3) | Top 5 Leaderboard (1/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
           <MonthlyTrendChart dashboardData={monthlyTrendData} />
-        )}
-
+        </div>
+        <div className="lg:col-span-1">
+          <LeaderboardCard />
+        </div>
       </div>
     </div>
   );

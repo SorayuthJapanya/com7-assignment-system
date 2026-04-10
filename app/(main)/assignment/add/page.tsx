@@ -17,7 +17,7 @@ export default function AddAssignmentPage() {
   }, [users]);
 
   return (
-    <div className="w-full max-w-8xl mx-auto space-y-8">
+    <div className="w-full max-w-7xl xl:max-w-360 mx-auto space-y-8">
       <div className="w-full">
         <Header title={"Add Assignment"} subTitle={"Add new assignment"} />
       </div>
