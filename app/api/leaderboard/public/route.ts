@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
         COUNT(s.id) as "assignmentCount"
       FROM "User" u
       LEFT JOIN "Score" s ON u.id = s."recipient_id" ${scoreFilter}
+      WHERE u.role != 'SUPER_ADMIN'
       GROUP BY u.id, u.username, u.nickname
       ORDER BY "totalScore" DESC
       LIMIT ${limit}
