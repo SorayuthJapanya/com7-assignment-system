@@ -6,6 +6,7 @@ export interface IUser {
   role: string;
   profileImage?: string;
   createdAt: Date;
+  updatedAt?: Date;
 }
 
 export interface JWTPayload {
