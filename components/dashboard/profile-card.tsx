@@ -78,7 +78,7 @@ export default function ProfileCard({ user, kpis }: ProfileCardProps) {
     .slice(0, 2);
 
   const role = roleConfig[user.role] || roleConfig.STAFF;
-  const totalScore = kpis?.totalScore ?? 0;
+  const totalScore = myEntry?.totalScore ?? kpis?.totalScore ?? 0;
   const { current: currentLevel, next: nextLevel, progress } = resolveLevel(totalScore, levels);
 
   const [animatedProgress, setAnimatedProgress] = useState(0);
