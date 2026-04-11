@@ -17,7 +17,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -37,8 +36,6 @@ interface EditUserDialogProps {
 }
 
 const editUserSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  nickname: z.string().min(2, "Nickname must be at least 2 characters"),
   role: z.enum(["STAFF", "ADMIN", "SUPER_ADMIN"], {
     required_error: "Role is required",
   }),
@@ -52,10 +49,8 @@ export default function EditUserDialog({
   const { mutateAsync: updateUser, isPending } = useUpdateUser();
 
   const form = useForm<z.infer<typeof editUserSchema>>({
-    resolver: zodResolver(editUserSchema as any),
+    resolver: zodResolver(editUserSchema),
     defaultValues: {
-      email: "",
-      nickname: "",
       role: "STAFF",
     },
   });
@@ -63,9 +58,7 @@ export default function EditUserDialog({
   useEffect(() => {
     if (user && open) {
       form.reset({
-        email: user.email || "",
-        nickname: user.nickname || "",
-        role: (user.role as "STAFF" | "SUPER_ADMIN") || "STAFF",
+        role: (user.role as "STAFF" | "ADMIN" | "SUPER_ADMIN") || "STAFF",
       });
     }
   }, [user, open, form]);
@@ -84,11 +77,7 @@ export default function EditUserDialog({
 
     await updateUser({
       id: user.id,
-      data: {
-        email: data.email,
-        nickname: data.nickname,
-        role: data.role,
-      },
+      data: { role: data.role },
     });
     onClose();
   };
@@ -100,70 +89,39 @@ export default function EditUserDialog({
         if (!val) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Edit User</DialogTitle>
           <DialogDescription>
-            Update user information and role.
+            Change the role for{" "}
+            <span className="font-medium text-foreground">
+              {user?.nickname || user?.username}
+            </span>
+            .
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-4 pt-4"
+            className="space-y-4 pt-2"
           >
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="email"
-                      placeholder="Enter email address"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="nickname"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nickname</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Enter nickname" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <FormField
               control={form.control}
               name="role"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Role</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                  >
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select a role" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="STAFF">STAFF</SelectItem>
-                      <SelectItem value="ADMIN">ADMIN</SelectItem>
-                      <SelectItem value="SUPER_ADMIN">SUPER_ADMIN</SelectItem>
+                      <SelectItem value="STAFF">Staff</SelectItem>
+                      <SelectItem value="ADMIN">Admin</SelectItem>
+                      <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -171,7 +129,7 @@ export default function EditUserDialog({
               )}
             />
 
-            <div className="flex justify-end gap-2 pt-4">
+            <div className="flex justify-end gap-2 pt-2">
               <Button
                 type="button"
                 variant="outline"
@@ -181,7 +139,7 @@ export default function EditUserDialog({
                 Cancel
               </Button>
               <Button type="submit" disabled={isPending}>
-                Save Changes
+                Save
               </Button>
             </div>
           </form>

@@ -21,12 +21,12 @@ export async function PUT(
 
     // Get request body
     const body = await request.json();
-    const { nickname, email, role } = body;
+    const { nickname, email, role, profileImage } = body;
 
     // Validate input
-    if (!nickname && !email && !role) {
+    if (!nickname && !email && !role && !profileImage) {
       return NextResponse.json(
-        { error: "At least one field (nickname, email, or role) must be provided" },
+        { error: "At least one field (nickname, email, role, or profileImage) must be provided" },
         { status: 400 },
       );
     }
@@ -64,6 +64,7 @@ export async function PUT(
         ...(nickname && { nickname }),
         ...(email && { email }),
         ...(role && { role: role as "SUPER_ADMIN" | "STAFF" }),
+        ...(profileImage && { profileImage }),
       },
       select: {
         id: true,
@@ -71,6 +72,7 @@ export async function PUT(
         email: true,
         nickname: true,
         role: true,
+        profileImage: true,
         createdAt: true,
         updatedAt: true,
       },

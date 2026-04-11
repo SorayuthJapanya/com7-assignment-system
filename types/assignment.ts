@@ -7,6 +7,8 @@ export interface IFilteredAssignment {
   myAssignments?: boolean;
   status?: "not-submit" | "Pending" | "Approved" | "Rejected" | "all";
   type?: "Individual" | "Group" | "all";
+  username?: string;
+  deadlineMonth?: string;
 }
 
 export interface IAssignment {

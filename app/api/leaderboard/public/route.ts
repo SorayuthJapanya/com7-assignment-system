@@ -27,18 +27,19 @@ export async function GET(request: NextRequest) {
     }
 
     const rawScores = await prisma.$queryRawUnsafe<
-      { userId: string; username: string; nickname: string; totalScore: bigint; assignmentCount: bigint }[]
+      { userId: string; username: string; nickname: string; profileImage: string | null; totalScore: bigint; assignmentCount: bigint }[]
     >(`
       SELECT
         u.id as "userId",
         u.username,
         u.nickname,
+        u."profileImage",
         COALESCE(SUM(s.score), 0) as "totalScore",
         COUNT(s.id) as "assignmentCount"
       FROM "User" u
       LEFT JOIN "Score" s ON u.id = s."recipient_id" ${scoreFilter}
       WHERE u.role != 'SUPER_ADMIN'
-      GROUP BY u.id, u.username, u.nickname
+      GROUP BY u.id, u.username, u.nickname, u."profileImage"
       ORDER BY "totalScore" DESC
       LIMIT ${limit}
     `);
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest) {
 
     const leaderboard = rawScores.map((row, index) => {
       const totalScore = Number(row.totalScore);
+      const assignmentCount = Number(row.assignmentCount);
       const level = levels.find(
         (l) => totalScore >= l.minScore && totalScore <= l.maxScore
       ) || null;
@@ -56,8 +58,10 @@ export async function GET(request: NextRequest) {
         userId: row.userId,
         username: row.username,
         nickname: row.nickname,
+        profileImage: row.profileImage,
         totalScore,
-        assignmentCount: Number(row.assignmentCount),
+        avgScore: assignmentCount > 0 ? Math.round((totalScore / assignmentCount) * 10) / 10 : 0,
+        assignmentCount,
         level,
       };
     });

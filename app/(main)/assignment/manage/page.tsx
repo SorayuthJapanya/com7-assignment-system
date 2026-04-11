@@ -10,8 +10,10 @@ import AssignmentFilter from "@/components/table/assignment-filter";
 import Pagination from "@/components/pagination";
 import AssignmentTable from "@/components/assignment-table";
 import Link from "next/link";
+import { useIsSuperAdmin } from "@/hooks/use-current-user";
 
 export default function ManageAssignmentPage() {
+  const { isSuperAdmin } = useIsSuperAdmin();
   const [filtered, setFiltered] = useState<IFilteredAssignment>({
     search: "",
     type: "all",
@@ -19,6 +21,8 @@ export default function ManageAssignmentPage() {
     page: 1,
     limit: 15,
     myAssignments: false,
+    username: "",
+    deadlineMonth: "",
   });
 
   const { data: assignmentsData, isLoading } = useGetAssignments(filtered);
@@ -27,9 +31,19 @@ export default function ManageAssignmentPage() {
     key: keyof IFilteredAssignment,
     value: string | number | boolean,
   ) => {
+    setFiltered({ ...filtered, [key]: value, page: 1 });
+  };
+
+  const handleClear = () => {
     setFiltered({
-      ...filtered,
-      [key]: value,
+      search: "",
+      type: "all",
+      status: "all",
+      page: 1,
+      limit: filtered.limit,
+      myAssignments: false,
+      username: "",
+      deadlineMonth: "",
     });
   };
   
@@ -46,7 +60,9 @@ export default function ManageAssignmentPage() {
           <AssignmentFilter
             filtered={filtered}
             handleFiltered={handleFiltered}
+            onClear={handleClear}
             total={assignmentsData?.pagination?.total || 0}
+            isSuperAdmin={isSuperAdmin}
           />
           <Link href="/assignment/add">
             <Button className="shrink-0 cursor-pointer">

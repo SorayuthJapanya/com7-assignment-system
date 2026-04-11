@@ -46,7 +46,6 @@ export default function ChartsSection({ charts }: ChartsSectionProps) {
         <UserAssignmentStatusChart dashboardData={userAssignmentData} />
         <StatusDistributionChart
           data={statusDistributionData.data}
-          colors={statusDistributionData.colors}
         />
       </div>
 

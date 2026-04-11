@@ -37,7 +37,6 @@ export default function UserChartsSection({ charts }: UserChartsSectionProps) {
       <UserScoreByMonthChart dashboardData={scoreByMonthData || []} />
       <StatusDistributionChart
         data={statusDistributionData || []}
-        colors={charts?.statusDistribution?.colors}
       />
     </div>
   );

@@ -30,7 +30,9 @@ export interface LeaderboardEntry {
   userId: string;
   username: string;
   nickname: string;
+  profileImage?: string | null;
   totalScore: number;
+  avgScore: number;
   assignmentCount: number;
   level: ILevel | null;
 }

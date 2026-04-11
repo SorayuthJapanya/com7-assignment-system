@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronsUpDown, LogOut, UserPen } from "lucide-react";
+import { ChevronsUpDown, LogOut, UserPen, Camera } from "lucide-react";
+import { Avatar, AvatarImage, AvatarFallback } from "../ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,11 +28,11 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Button } from "../ui/button";
 import { IUser } from "@/types/auth";
-import { useLogout, useUpdateUser } from "@/hooks/use-auth";
+import { useLogout, useUpdateUser, useUploadProfileImage } from "@/hooks/use-auth";
 import { useAuthUser, useAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 export default function NavUser() {
   const authUser = useAuthUser() as IUser | null;
@@ -41,12 +42,18 @@ export default function NavUser() {
 
   const { mutateAsync: logoutMutation } = useLogout();
   const { mutateAsync: updateUserMutation, isPending } = useUpdateUser();
+  const { mutateAsync: uploadImageMutation, isPending: isUploading } = useUploadProfileImage();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!authUser) return null;
+
+  const isBusy = isPending || isUploading;
 
   const handleLogout = async () => {
     const result = await Swal.fire({
@@ -66,25 +73,47 @@ export default function NavUser() {
   const handleOpenEditProfile = () => {
     setNickname(authUser.nickname);
     setEmail(authUser.email);
+    setSelectedFile(null);
+    setPreviewUrl(null);
     setDialogOpen(true);
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+  };
+
   const handleUpdateProfile = async () => {
-    if (!nickname.trim() && !email.trim()) return;
+    if (!nickname.trim() && !email.trim() && !selectedFile) return;
 
     try {
       Swal.fire({
-        title: "Updating...",
+        title: "Saving...",
         text: "Please wait while we update your profile.",
         allowOutsideClick: false,
-        didOpen: () => {
-          Swal.showLoading();
-        },
-      })
+        didOpen: () => Swal.showLoading(),
+      });
+
+      let profileImageUrl: string | undefined;
+
+      // Step 1: upload image if selected
+      if (selectedFile) {
+        const uploadRes = await uploadImageMutation(selectedFile);
+        profileImageUrl = uploadRes.url;
+      }
+
+      // Step 2: update user profile
       const res = await updateUserMutation({
         id: authUser.id,
-        data: { nickname: nickname.trim(), email: email.trim() },
+        data: {
+          nickname: nickname.trim(),
+          email: email.trim(),
+          ...(profileImageUrl && { profileImage: profileImageUrl }),
+        },
       });
+
       setUser({
         id: authUser.id,
         username: authUser.username,
@@ -93,12 +122,17 @@ export default function NavUser() {
         updatedAt: (res.data as unknown as { updatedAt: string }).updatedAt ?? "",
         nickname: res.data.nickname,
         email: res.data.email,
+        profileImage: (res.data as unknown as { profileImage?: string }).profileImage ?? authUser.profileImage,
       });
+
       setDialogOpen(false);
     } catch {
-      // error handled inside useUpdateUser
+      // error handled inside mutations
     }
   };
+
+  const avatarUrl = authUser.profileImage;
+  const initials = authUser.nickname.charAt(0).toUpperCase();
 
   return (
     <>
@@ -110,9 +144,10 @@ export default function NavUser() {
                 size={"lg"}
                 className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
               >
-                <div className="size-8 rounded-lg bg-primary flex items-center justify-center text-white font-medium">
-                  {authUser.nickname.charAt(0)}
-                </div>
+                <Avatar className="size-10">
+                  <AvatarImage src={avatarUrl} alt={authUser.nickname} />
+                  <AvatarFallback className="rounded-lg bg-primary text-white font-medium">{initials}</AvatarFallback>
+                </Avatar>
                 <div className="flex flex-col">
                   <p>{authUser.nickname}</p>
                   <p className="max-w-36 truncate text-sm text-muted-foreground">
@@ -129,9 +164,10 @@ export default function NavUser() {
             >
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <div className="size-8 rounded-lg bg-primary flex items-center justify-center text-white font-medium">
-                    {authUser.nickname.charAt(0)}
-                  </div>
+                  <Avatar className="size-10">
+                    <AvatarImage src={avatarUrl} alt={authUser.nickname} />
+                    <AvatarFallback className="bg-primary text-white font-medium">{initials}</AvatarFallback>
+                  </Avatar>
                   <div className="flex flex-col">
                     <p>{authUser.nickname}</p>
                     <p className="max-w-36 truncate text-sm text-muted-foreground">
@@ -160,7 +196,33 @@ export default function NavUser() {
           <DialogHeader>
             <DialogTitle>Edit Profile</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
+          <div className="flex flex-col gap-5 py-2">
+
+            {/* Avatar upload */}
+            <div className="flex flex-col items-center gap-2">
+              <div
+                className="relative cursor-pointer group"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Avatar className="size-24 text-3xl">
+                  <AvatarImage src={previewUrl ?? avatarUrl} alt={authUser.nickname} />
+                  <AvatarFallback className="bg-primary text-white font-medium text-3xl">{initials}</AvatarFallback>
+                </Avatar>
+                {/* Hover overlay */}
+                <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Camera className="size-6 text-white" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Click to upload photo (max 5MB)</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
+
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="nickname">Nickname</Label>
               <Input
@@ -182,11 +244,11 @@ export default function NavUser() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isPending}>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isBusy}>
               Cancel
             </Button>
-            <Button onClick={handleUpdateProfile} disabled={isPending}>
-              {isPending ? "Saving..." : "Save"}
+            <Button onClick={handleUpdateProfile} disabled={isBusy}>
+              {isBusy ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -4,6 +4,7 @@ export interface IUser {
   email: string;
   nickname: string;
   role: string;
+  profileImage?: string;
   createdAt: Date;
 }
 
@@ -34,6 +35,7 @@ export interface UpdateRequest {
   nickname?: string;
   email?: string;
   role?: string;
+  profileImage?: string;
 }
 
 export interface UpdateResponse {

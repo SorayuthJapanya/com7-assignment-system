@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate token
-    const token = generateToken(user);
+    const token = generateToken({ ...user, profileImage: user.profileImage ?? undefined });
 
     // Create response
     const response = NextResponse.json(

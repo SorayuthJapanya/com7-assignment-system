@@ -11,7 +11,7 @@ import {
 import { useGetAssignments, useReviewAssignment } from "@/hooks/use-assignment";
 import { IAssignment, IFilteredAssignment } from "@/types/assignment";
 import { Search } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import ReviewAssignment from "@/components/dialog/review-assignment";
 import Swal from "sweetalert2";
 
@@ -26,6 +26,7 @@ export default function ReviewAssignmentPage() {
   });
   const [selectedAssignment, setSelectedAssignment] =
     useState<IAssignment | null>(null);
+  const selectedAssignmentRef = useRef<IAssignment | null>(null);
 
   const { data: assignmentsData, isLoading } = useGetAssignments(filtered);
   const { mutateAsync: reviewAssignment } = useReviewAssignment();
@@ -40,12 +41,20 @@ export default function ReviewAssignmentPage() {
     });
   };
 
+  const handleSelectAssignment = (assignment: IAssignment | null) => {
+    if (assignment !== null) {
+      selectedAssignmentRef.current = assignment;
+    }
+    setSelectedAssignment(assignment);
+  };
+
   const handleReviewAssignment = async (data: {
     status: string;
     finalScore: number;
     feedback: string;
   }) => {
-    if (!selectedAssignment) return;
+    const assignment = selectedAssignmentRef.current;
+    if (!assignment) return;
     Swal.fire({
       title: "Updating...",
       text: "Please wait",
@@ -55,10 +64,9 @@ export default function ReviewAssignmentPage() {
       },
     });
     await reviewAssignment({
-      id: selectedAssignment.id,
+      id: assignment.id,
       data,
     });
-    setSelectedAssignment(null);
   };
 
   return (
@@ -106,7 +114,7 @@ export default function ReviewAssignmentPage() {
                 <AssignmentCard
                   key={assignment.id}
                   assignment={assignment}
-                  onSelected={setSelectedAssignment}
+                  onSelected={handleSelectAssignment}
                 />
               ))
             )}
@@ -125,15 +133,9 @@ export default function ReviewAssignmentPage() {
 
       <ReviewAssignment
         selectedAssignment={selectedAssignment}
-        setSelectedAssignment={setSelectedAssignment}
+        setSelectedAssignment={handleSelectAssignment}
         isPending={false}
-        handleOnReview={async (data: {
-          status: string;
-          finalScore: number;
-          feedback: string;
-        }) => {
-          await handleReviewAssignment(data);
-        }}
+        handleOnReview={handleReviewAssignment}
       />
     </div>
   );

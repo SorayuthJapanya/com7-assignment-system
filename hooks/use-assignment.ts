@@ -28,11 +28,13 @@ export const useGetAssignments = ({
   page,
   status,
   type,
+  username,
+  deadlineMonth,
 }: IFilteredAssignment) => {
   return useQuery<GetAssignmentsResponse>({
-    queryKey: ["assignment", search, limit, myAssignments, page, status, type],
+    queryKey: ["assignment", search, limit, myAssignments, page, status, type, username, deadlineMonth],
     queryFn: () =>
-      getAssignments({ search, limit, myAssignments, page, status, type }),
+      getAssignments({ search, limit, myAssignments, page, status, type, username, deadlineMonth }),
   });
 };
 

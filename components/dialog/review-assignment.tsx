@@ -9,7 +9,7 @@ import {
 } from "../ui/dialog";
 import { IAssignment } from "@/types/assignment";
 import { Button } from "../ui/button";
-import { CalendarDays, Coins } from "lucide-react";
+import { CalendarDays, Coins, Expand } from "lucide-react";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
@@ -24,9 +24,7 @@ import {
 
 interface ReviewAssignmentProps {
   selectedAssignment: IAssignment | null;
-  setSelectedAssignment: React.Dispatch<
-    React.SetStateAction<IAssignment | null>
-  >;
+  setSelectedAssignment: (assignment: IAssignment | null) => void;
   isPending: boolean;
   handleOnReview: (data: {
     status: string;
@@ -44,6 +42,10 @@ export default function ReviewAssignment({
   const [status, setStatus] = useState<string>("Pending");
   const [finalScore, setFinalScore] = useState<string>("");
   const [feedback, setFeedback] = useState<string>("");
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const submissionUrl = selectedAssignment?.submissionUrl || null;
+  const isPdf = submissionUrl?.toLowerCase().endsWith(".pdf") ?? false;
 
   useEffect(() => {
     if (selectedAssignment) {
@@ -80,6 +82,7 @@ export default function ReviewAssignment({
   };
 
   return (
+    <>
     <Dialog
       open={!!selectedAssignment}
       onOpenChange={(open) => {
@@ -131,26 +134,31 @@ export default function ReviewAssignment({
             {/* Submitted File Preview */}
             <div className="space-y-3">
               <Label>Submitted Work</Label>
-              {selectedAssignment.submissionUrl ? (
-                <div className="rounded-md overflow-hidden border">
-                  {selectedAssignment.submissionUrl
-                    .toLowerCase()
-                    .endsWith(".pdf") ? (
+              {submissionUrl ? (
+                <div className="relative rounded-md overflow-hidden border group">
+                  {isPdf ? (
                     <iframe
-                      src={selectedAssignment.submissionUrl}
+                      src={submissionUrl}
                       className="w-full h-[400px]"
                       title="PDF Preview"
                     />
                   ) : (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={selectedAssignment.submissionUrl}
-                        alt="Preview"
-                        className="w-full max-h-[350px] object-contain bg-muted"
-                      />
-                    </>
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={submissionUrl}
+                      alt="Preview"
+                      className="w-full max-h-[350px] object-contain bg-muted"
+                    />
                   )}
+                  {/* Expand button */}
+                  <button
+                    type="button"
+                    onClick={() => isPdf ? window.open(submissionUrl, "_blank") : setFullscreen(true)}
+                    className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-md p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title={isPdf ? "Open in new tab" : "View fullscreen"}
+                  >
+                    <Expand className="size-4" />
+                  </button>
                 </div>
               ) : (
                 <div className="p-4 bg-muted text-sm text-muted-foreground rounded-md text-center">
@@ -231,5 +239,22 @@ export default function ReviewAssignment({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Fullscreen preview dialog */}
+    {submissionUrl && !isPdf && (
+      <Dialog open={fullscreen} onOpenChange={setFullscreen}>
+        <DialogContent className="w-full max-h-[90vh] p-0 flex flex-col rounded-lg">
+          <div className="w-full h-auto rounded-lg flex-1 overflow-auto bg-muted flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={submissionUrl}
+              alt="Fullscreen Preview"
+              className="w-full h-full object-contain rounded-lg"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
   );
 }

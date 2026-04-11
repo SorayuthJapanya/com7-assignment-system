@@ -30,6 +30,8 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
     const skip = (page - 1) * limit;
+    const username = searchParams.get("username") || "";
+    const deadlineMonth = searchParams.get("deadlineMonth") || "";
 
     // Build where clause
     const where: Record<string, unknown> = {};
@@ -69,6 +71,21 @@ export async function GET(request: NextRequest) {
     // Add type filter
     if (type !== "all") {
       where.type = type;
+    }
+
+    // Username filter — SUPER_ADMIN only
+    if (username && authUser.role === "SUPER_ADMIN") {
+      where.assignTo = { contains: username, mode: "insensitive" };
+    }
+
+    // Deadline month filter
+    if (deadlineMonth) {
+      const month = parseInt(deadlineMonth);
+      const year = new Date().getFullYear();
+      where.deadline = {
+        gte: new Date(year, month - 1, 1),
+        lt: new Date(year, month, 1),
+      };
     }
 
     // Get total count for pagination

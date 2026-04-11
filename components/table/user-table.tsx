@@ -16,6 +16,7 @@ import Swal from "sweetalert2";
 import { useDeleteUser } from "@/hooks/use-auth";
 import { useState } from "react";
 import EditUserDialog from "@/components/dialog/edit-user";
+import { useAuthUser } from "@/contexts/auth-context";
 
 interface UserTableProps {
   data: IUser[] | undefined;
@@ -23,6 +24,7 @@ interface UserTableProps {
 
 export default function UserTable({ data }: UserTableProps) {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState<IUser | null>(null);
+  const authUser = useAuthUser();
 
   const { mutateAsync: deleteUser } = useDeleteUser();
 
@@ -66,7 +68,9 @@ export default function UserTable({ data }: UserTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((user, index) => (
+          {data.map((user, index) => {
+            const isOwn = authUser?.id === user.id;
+            return (
             <TableRow key={user.id}>
               <TableCell className="text-center font-medium">
                 {index + 1}
@@ -108,6 +112,8 @@ export default function UserTable({ data }: UserTableProps) {
                     size="icon"
                     className="h-8 w-8 cursor-pointer"
                     onClick={() => setIsEditDialogOpen(user)}
+                    disabled={isOwn}
+                    title={isOwn ? "Cannot edit your own account" : undefined}
                   >
                     <Edit className="h-4 w-4" />
                   </Button>
@@ -116,13 +122,16 @@ export default function UserTable({ data }: UserTableProps) {
                     size="icon"
                     className="h-8 w-8 cursor-pointer"
                     onClick={() => handleDelete(user.id)}
+                    disabled={isOwn}
+                    title={isOwn ? "Cannot delete your own account" : undefined}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </TableCell>
             </TableRow>
-          ))}
+            );
+          })}
         </TableBody>
       </Table>
 

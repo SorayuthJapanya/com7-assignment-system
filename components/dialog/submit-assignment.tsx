@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,8 +9,7 @@ import {
 } from "../ui/dialog";
 import { IAssignment } from "@/types/assignment";
 import { Button } from "../ui/button";
-import { CalendarDays } from "lucide-react";
-import { Coins } from "lucide-react";
+import { CalendarDays, Coins, Expand, X } from "lucide-react";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 
@@ -39,7 +38,16 @@ export default function SubmitAssignment({
   handleOnSubmit,
   handleFileChange,
 }: SubmitAssignmentProps) {
+  const isApproved = selectedAssignment?.status === "Approved";
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const previewSrc = (preview && file) ? preview : selectedAssignment?.submissionUrl || null;
+  const isPdf = (preview && file)
+    ? file.type === "application/pdf"
+    : selectedAssignment?.submissionUrl?.toLowerCase().endsWith(".pdf") ?? false;
+
   return (
+    <>
     <Dialog
       open={!!selectedAssignment}
       onOpenChange={(open) => {
@@ -57,8 +65,10 @@ export default function SubmitAssignment({
             Review the details and upload your work to submit.
           </DialogDescription>
         </DialogHeader>
+
         {selectedAssignment && (
           <div className="space-y-6 py-2">
+            {/* Title & Description */}
             <div className="space-y-2">
               <h3 className="font-semibold text-lg leading-none">
                 Title: {selectedAssignment.title}
@@ -75,12 +85,13 @@ export default function SubmitAssignment({
                 </p>
               )}
             </div>
+
+            {/* Meta */}
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <CalendarDays className="w-4 h-4" />
                 <span suppressHydrationWarning>
-                  Due{" "}
-                  {new Date(selectedAssignment.deadline).toLocaleDateString()}
+                  Due {new Date(selectedAssignment.deadline).toLocaleDateString()}
                 </span>
               </div>
               <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-sm font-medium">
@@ -90,72 +101,64 @@ export default function SubmitAssignment({
                   : `Reward: ${selectedAssignment.reward}`}
               </div>
             </div>
-            <div className="space-y-3">
-              <Label htmlFor="assignment-file" className="text-nowrap">
-                Upload File
-                <span className="text-xs text-destructive text-wrap">
-                  (Allow only image and pdf file, Max 2MB)
-                </span>
-              </Label>
-              <Input
-                id="assignment-file"
-                type="file"
-                className="cursor-pointer"
-                onChange={handleFileChange}
-                accept="image/jpeg, image/png, image/jpg, application/pdf, .pdf"
-              />
-              {preview && file ? (
-                <div className="mt-2 rounded-md overflow-hidden border">
-                  {file.type === "application/pdf" ? (
-                    <iframe
-                      src={preview}
-                      className="w-full h-[calc(100vh-20rem)]"
-                      title="PDF Preview"
-                    />
-                  ) : (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={preview}
-                        alt="Preview"
-                        className="w-full max-h-[250px] object-contain bg-muted"
-                      />
-                    </>
-                  )}
-                </div>
-              ) : selectedAssignment.submissionUrl ? (
-                <div className="mt-2 rounded-md overflow-hidden border">
-                  {selectedAssignment.submissionUrl
-                    .toLowerCase()
-                    .endsWith(".pdf") ? (
-                    <iframe
-                      src={selectedAssignment.submissionUrl}
-                      className="w-full h-[400px]"
-                      title="PDF Preview"
-                    />
-                  ) : (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={selectedAssignment.submissionUrl}
-                        alt="Preview"
-                        className="w-full max-h-[250px] object-contain bg-muted"
-                      />
-                    </>
-                  )}
-                </div>
-              ) : (
-                file && (
-                  <div className="mt-2 p-3 bg-muted rounded-md text-sm border break-all">
+
+            {/* Submission preview */}
+            {previewSrc && (
+              <div className="relative rounded-md overflow-hidden border group">
+                {isPdf ? (
+                  <iframe
+                    src={previewSrc}
+                    className="w-full h-[400px]"
+                    title="PDF Preview"
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={previewSrc}
+                    alt="Preview"
+                    className="w-full max-h-[250px] object-contain bg-muted"
+                  />
+                )}
+                {/* Expand button */}
+                <button
+                  type="button"
+                  onClick={() => isPdf && previewSrc ? window.open(previewSrc, "_blank") : setFullscreen(true)}
+                  className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-md p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title={isPdf ? "Open in new tab" : "View fullscreen"}
+                >
+                  <Expand className="size-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Upload section — hidden when Approved */}
+            {!isApproved && (
+              <div className="space-y-3">
+                <Label htmlFor="assignment-file" className="text-nowrap">
+                  Upload File
+                  <span className="text-xs text-destructive text-wrap ml-1">
+                    (Allow only image and pdf file, Max 2MB)
+                  </span>
+                </Label>
+                <Input
+                  id="assignment-file"
+                  type="file"
+                  className="cursor-pointer"
+                  onChange={handleFileChange}
+                  accept="image/jpeg, image/png, image/jpg, application/pdf, .pdf"
+                />
+                {file && !preview && (
+                  <div className="p-3 bg-muted rounded-md text-sm border break-all">
                     Selected file:{" "}
                     <span className="font-semibold">{file.name}</span> (
                     {(file.size / 1024 / 1024).toFixed(2)} MB)
                   </div>
-                )
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         )}
+
         <DialogFooter>
           <Button
             variant="outline"
@@ -167,18 +170,45 @@ export default function SubmitAssignment({
             className="cursor-pointer"
             disabled={isPending}
           >
-            Cancel
+            Close
           </Button>
-          <Button
-            type="button"
-            className="cursor-pointer"
-            onClick={handleOnSubmit}
-            disabled={!file || isPending}
-          >
-            Submit
-          </Button>
+          {!isApproved && (
+            <Button
+              type="button"
+              className="cursor-pointer"
+              onClick={handleOnSubmit}
+              disabled={!file || isPending}
+            >
+              Submit
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Fullscreen preview dialog */}
+    {previewSrc && (
+      <Dialog open={fullscreen} onOpenChange={setFullscreen}>
+        <DialogContent className="w-full max-h-[90vh] p-0 flex flex-col rounded-lg">
+          <div className="w-full h-auto rounded-lg flex-1 overflow-auto bg-muted flex items-center justify-center">
+            {isPdf ? (
+              <iframe
+                src={previewSrc}
+                className="w-full h-full rounded-lg"
+                title="PDF Fullscreen"
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={previewSrc}
+                alt="Fullscreen Preview"
+                className="w-full h-full object-contain rounded-lg"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    )}
+  </>
   );
 }

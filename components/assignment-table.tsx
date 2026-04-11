@@ -108,6 +108,7 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
                 assignment.submissionUrl === ""
                   ? "Not Submit"
                   : assignment.status;
+              const isApproved = assignment.status === "Approved";
               return (
                 <TableRow
                   key={assignment.id}
@@ -152,7 +153,8 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
                         size="icon"
                         onClick={() => handleEdit(assignment)}
                         className="h-8 w-8 cursor-pointer"
-                        title="Edit"
+                        title={isApproved ? "Cannot edit an approved assignment" : "Edit"}
+                        disabled={isApproved}
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
@@ -170,7 +172,8 @@ export default function AssignmentTable({ assignments }: AssignmentTableProps) {
                         size="icon"
                         onClick={() => handleDelete(assignment.id)}
                         className="h-8 w-8 cursor-pointer"
-                        title="Delete"
+                        title={isApproved ? "Cannot delete an approved assignment" : "Delete"}
+                        disabled={isApproved}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

@@ -79,9 +79,17 @@ export default function MyAssignmentPage() {
     key: keyof IFilteredAssignment,
     value: string | number | boolean,
   ) => {
+    setFiltered({ ...filtered, [key]: value, page: 1 });
+  };
+
+  const handleClear = () => {
     setFiltered({
-      ...filtered,
-      [key]: value,
+      search: "",
+      type: "all",
+      status: "all",
+      page: 1,
+      limit: filtered.limit,
+      myAssignments: true,
     });
   };
 
@@ -97,6 +105,7 @@ export default function MyAssignmentPage() {
         <AssignmentFilter
           filtered={filtered}
           handleFiltered={handleFiltered}
+          onClear={handleClear}
           total={assignmentsData?.pagination?.total || 0}
         />
       </div>

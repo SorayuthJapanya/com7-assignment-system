@@ -10,7 +10,6 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ReferenceArea,
 } from "recharts";
 import {
   ChartContainer,
@@ -60,8 +59,8 @@ export const UserAssignmentStatusChart = ({
         <CardDescription>Number of assignments per user</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 pb-0">
-        <ChartContainer config={chartConfig} className="max-h-64 w-full">
-          <ResponsiveContainer width="100%" height={250}>
+        <ChartContainer config={chartConfig} className="max-h-80 w-full">
+          <ResponsiveContainer width="100%" height={300}>
             <BarChart
               data={transformedData}
               margin={{ top: 20, right: 30, left: -20, bottom: 5 }}

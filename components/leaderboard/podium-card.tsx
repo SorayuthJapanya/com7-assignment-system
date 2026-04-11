@@ -1,10 +1,59 @@
 "use client";
 
 import LevelBadge from "@/components/shared/level-badge";
-import { LeaderboardEntry } from "@/types/level";
+import { LeaderboardEntry, ILevel } from "@/types/level";
 import { cn } from "@/lib/utils";
 import { Crown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useGetLevels } from "@/hooks/use-level";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+
+function resolveProgress(score: number, levels: ILevel[]) {
+  const sorted = [...levels].sort((a, b) => a.minScore - b.minScore);
+  const current = sorted.find((l) => score >= l.minScore && score <= l.maxScore)
+    ?? sorted.filter((l) => score > l.maxScore).at(-1)
+    ?? null;
+  const next = current
+    ? sorted.find((l) => l.minScore > current.maxScore) ?? null
+    : sorted[0] ?? null;
+
+  if (!current) return { progress: 0, color: null, nextName: next ? `${next.emoji} ${next.name}` : null };
+
+  const rangeSize = current.maxScore - current.minScore;
+  const progress = rangeSize > 0
+    ? Math.min(100, Math.round(((score - current.minScore) / rangeSize) * 100))
+    : 100;
+
+  return { progress, color: current.color, nextName: next ? `${next.emoji} ${next.name}` : null };
+}
+
+function LevelProgressBar({ score, levels }: { score: number; levels: ILevel[] }) {
+  const { progress, color, nextName } = resolveProgress(score, levels);
+  const [animated, setAnimated] = useState(0);
+
+  useEffect(() => {
+    const id = setTimeout(() => setAnimated(progress), 300);
+    return () => clearTimeout(id);
+  }, [progress]);
+
+  return (
+    <div className="w-full flex flex-col gap-1">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full transition-[width] duration-1500 ease-out"
+          style={{
+            width: `${animated}%`,
+            backgroundColor: color ?? "hsl(var(--primary))",
+          }}
+        />
+      </div>
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+        <span className="tabular-nums">{progress}%</span>
+        {nextName && <span className="truncate max-w-20">→ {nextName}</span>}
+      </div>
+    </div>
+  );
+}
 
 const rankConfig = {
   1: {
@@ -55,6 +104,7 @@ export default function PodiumCard({ entry, isMe }: PodiumCardProps) {
   const isFirst = rank === 1;
   const cfg = rankConfig[rank] ?? fallbackConfig;
 
+  const { data: levels = [] } = useGetLevels();
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
 
@@ -102,15 +152,23 @@ export default function PodiumCard({ entry, isMe }: PodiumCardProps) {
       </span>
 
       {/* Avatar */}
-      <div
+      <Avatar
         className={cn(
-          "rounded-full border-4 flex items-center justify-center font-bold text-primary bg-primary/15 shrink-0",
+          "border-4 shrink-0",
           cfg.border,
-          isFirst ? "size-12 sm:size-20 text-lg sm:text-2xl" : "size-10 sm:size-16 text-base sm:text-xl",
+          isFirst ? "size-12 sm:size-20" : "size-10 sm:size-16",
         )}
       >
-        {(entry.nickname || entry.username).slice(0, 2).toUpperCase()}
-      </div>
+        <AvatarImage src={entry.profileImage ?? undefined} alt={entry.nickname || entry.username} />
+        <AvatarFallback
+          className={cn(
+            "font-bold text-primary bg-primary/15",
+            isFirst ? "text-lg sm:text-2xl" : "text-base sm:text-xl",
+          )}
+        >
+          {(entry.nickname || entry.username).slice(0, 2).toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
 
       {/* Name */}
       <div className="text-center">
@@ -123,6 +181,11 @@ export default function PodiumCard({ entry, isMe }: PodiumCardProps) {
 
       {/* Level */}
       {entry.level && <LevelBadge level={entry.level} size="sm" />}
+
+      {/* Progress Bar */}
+      {levels.length > 0 && (
+        <LevelProgressBar score={entry.totalScore} levels={levels} />
+      )}
 
       {/* Score */}
       <p className={cn("font-bold tabular-nums", isFirst ? "text-lg sm:text-2xl" : "text-base sm:text-xl", cfg.scoreColor)}>

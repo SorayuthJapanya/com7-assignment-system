@@ -6,6 +6,7 @@ import {
   logout,
   register,
   updateUser,
+  uploadProfileImage,
 } from "@/services/auth-services";
 import { AxiosErrorResponse } from "@/types";
 import {
@@ -168,6 +169,12 @@ export const useUpdateUser = () => {
         showConfirmButton: false,
       });
     },
+  });
+};
+
+export const useUploadProfileImage = () => {
+  return useMutation<{ url: string }, AxiosError<AxiosErrorResponse>, File>({
+    mutationFn: uploadProfileImage,
   });
 };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { UserDashboardKPIs } from "@/types/dashboard";
 import { useGetLevels } from "@/hooks/use-level";
 import { usePublicLeaderboard } from "@/hooks/use-leaderboard";
@@ -15,6 +15,7 @@ interface ProfileCardProps {
     nickname: string;
     email: string;
     role: string;
+    profileImage?: string;
     createdAt: string;
     updatedAt: string;
   };
@@ -108,6 +109,7 @@ export default function ProfileCard({ user, kpis }: ProfileCardProps) {
                 }
               />
               <Avatar className="relative size-16 sm:size-20 ring-2 ring-background">
+                <AvatarImage src={user.profileImage} alt={user.nickname} />
                 <AvatarFallback className="bg-gradient-to-br from-primary/80 to-primary text-xl sm:text-2xl font-bold text-primary-foreground">
                   {initials}
                 </AvatarFallback>

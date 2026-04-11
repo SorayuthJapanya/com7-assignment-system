@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import {
   CalendarDays,
   Coins,
   Edit,
+  Expand,
   Trash2,
   Users,
   User,
@@ -37,6 +38,12 @@ export default function ManageAssignment({
   handleEdit,
   handleDelete,
 }: ManageAssignmentProps) {
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const submissionUrl = selectedAssignment?.submissionUrl || null;
+  const isPdf = submissionUrl?.toLowerCase().endsWith(".pdf") ?? false;
+  const isApproved = selectedAssignment?.status === "Approved";
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "Not Submit":
@@ -58,6 +65,7 @@ export default function ManageAssignment({
       : selectedAssignment?.status || "";
 
   return (
+    <>
     <Dialog
       open={!!selectedAssignment}
       onOpenChange={(open) => {
@@ -203,30 +211,35 @@ export default function ManageAssignment({
             )}
 
             {/* Submission Preview */}
-            {selectedAssignment.submissionUrl && (
+            {submissionUrl && (
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">
                   Submission
                 </Label>
-                <div className="rounded-md overflow-hidden border">
-                  {selectedAssignment.submissionUrl
-                    .toLowerCase()
-                    .endsWith(".pdf") ? (
+                <div className="relative rounded-md overflow-hidden border group">
+                  {isPdf ? (
                     <iframe
-                      src={selectedAssignment.submissionUrl}
+                      src={submissionUrl}
                       className="w-full h-[300px]"
                       title="PDF Preview"
                     />
                   ) : (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={selectedAssignment.submissionUrl}
-                        alt="Submission Preview"
-                        className="w-full max-h-[250px] object-contain bg-muted"
-                      />
-                    </>
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={submissionUrl}
+                      alt="Submission Preview"
+                      className="w-full max-h-[250px] object-contain bg-muted"
+                    />
                   )}
+                  {/* Expand button */}
+                  <button
+                    type="button"
+                    onClick={() => isPdf ? window.open(submissionUrl, "_blank") : setFullscreen(true)}
+                    className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-md p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title={isPdf ? "Open in new tab" : "View fullscreen"}
+                  >
+                    <Expand className="size-4" />
+                  </button>
                 </div>
               </div>
             )}
@@ -239,6 +252,8 @@ export default function ManageAssignment({
               if (selectedAssignment) handleEdit(selectedAssignment);
             }}
             className="cursor-pointer"
+            disabled={isApproved}
+            title={isApproved ? "Cannot edit an approved assignment" : undefined}
           >
             <Edit className="h-4 w-4 mr-1" />
             Edit
@@ -249,6 +264,8 @@ export default function ManageAssignment({
               if (selectedAssignment) handleDelete(selectedAssignment.id);
             }}
             className="cursor-pointer"
+            disabled={isApproved}
+            title={isApproved ? "Cannot delete an approved assignment" : undefined}
           >
             <Trash2 className="h-4 w-4 mr-1" />
             Delete
@@ -256,5 +273,30 @@ export default function ManageAssignment({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Fullscreen preview dialog */}
+    {submissionUrl && (
+      <Dialog open={fullscreen} onOpenChange={setFullscreen}>
+        <DialogContent className="w-full max-h-[90vh] p-0 flex flex-col rounded-lg">
+          <div className="w-full h-auto rounded-lg flex-1 overflow-auto bg-muted flex items-center justify-center">
+            {isPdf ? (
+              <iframe
+                src={submissionUrl}
+                className="w-full h-full rounded-lg"
+                title="PDF Fullscreen"
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={submissionUrl}
+                alt="Fullscreen Preview"
+                className="w-full h-full object-contain rounded-lg"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
   );
 }

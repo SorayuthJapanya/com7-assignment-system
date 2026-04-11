@@ -61,6 +61,17 @@ export const updateUser = async (
   return response.data;
 };
 
+export const uploadProfileImage = async (file: File): Promise<{ url: string }> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await axiosInstance.post<{ url: string }>(
+    "/api/upload",
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return response.data;
+};
+
 export const deleteUser = async (id: string): Promise<{ message: string }> => {
   const response = await axiosInstance.delete<{ message: string }>(
     `/api/auth/delete/${id}`,

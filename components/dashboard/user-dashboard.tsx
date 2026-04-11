@@ -34,6 +34,7 @@ export default function UserDashboard({ year, month }: UserDashboardProps) {
             nickname: user.nickname,
             email: user.email,
             role: user.role,
+            profileImage: user.profileImage,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt,
           }}

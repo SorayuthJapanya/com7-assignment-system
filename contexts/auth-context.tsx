@@ -8,6 +8,7 @@ interface AuthUser {
   nickname: string;
   email: string;
   role: "SUPER_ADMIN" | "ADMIN" | "STAFF";
+  profileImage?: string;
   createdAt: string;
   updatedAt: string;
 }
