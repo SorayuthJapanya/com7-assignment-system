@@ -49,6 +49,15 @@ export async function GET(request: NextRequest) {
     // Add userId filter
     if (userId && myAssignments) {
       where.userId = userId;
+
+      // Filter assignments created after resetAt (if user has been reset)
+      const currentUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { resetAt: true },
+      });
+      if (currentUser?.resetAt) {
+        where.createdAt = { gt: currentUser.resetAt };
+      }
     }
 
     // Role-based filtering: ADMINs only see assignments they created
@@ -95,7 +104,7 @@ export async function GET(request: NextRequest) {
     const assignments = await prisma.assignment.findMany({
       where,
       orderBy: {
-        deadline: "asc",
+        createdAt: "desc",
       },
       skip,
       take: limit,

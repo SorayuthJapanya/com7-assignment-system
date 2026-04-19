@@ -15,7 +15,7 @@ import { Edit, Trash2, RefreshCw } from "lucide-react";
 import Swal from "sweetalert2";
 import { useDeleteAssignment } from "@/hooks/use-assignment";
 import { useState } from "react";
-import ManageAssignment from "@/components/dialog/manage-assignment";
+import ManageAssignment from "@/components/dialog/details-assignment";
 import EditAssignment from "./dialog/edit-assignment";
 import { useRouter } from "next/navigation";
 

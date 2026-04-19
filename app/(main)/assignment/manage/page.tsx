@@ -31,7 +31,11 @@ export default function ManageAssignmentPage() {
     key: keyof IFilteredAssignment,
     value: string | number | boolean,
   ) => {
-    setFiltered({ ...filtered, [key]: value, page: 1 });
+    if (key === "page") {
+      setFiltered((prev) => ({ ...prev, page: value as number }));
+    } else {
+      setFiltered((prev) => ({ ...prev, [key]: value, page: 1 }));
+    }
   };
 
   const handleClear = () => {

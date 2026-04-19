@@ -22,17 +22,19 @@ import { useState, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Eye, EyeOff } from "lucide-react";
+import ForgotPasswordDialog from "@/components/dialog/forgot-password";
 
 export default function LoginPage() {
   const router = useRouter();
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   // Add useLogin hook
   const { mutateAsync: loginMutation, isPending: isLoginPending } = useLogin();
 
-  const form = useForm({
-    resolver: zodResolver(loginSchema as any),
+  const form = useForm<LoginSchema>({
+    resolver: zodResolver(loginSchema),
     defaultValues: {
       username: "",
       password: "",
@@ -138,23 +140,32 @@ export default function LoginPage() {
               )}
             />
 
-            <FieldGroup className="w-full max-w-56">
-              <Field orientation="horizontal">
-                <Checkbox
-                  id="remember-me"
-                  checked={rememberMe}
-                  onCheckedChange={(checked) =>
-                    setRememberMe(checked as boolean)
-                  }
-                />
-                <FieldLabel
-                  htmlFor="remember-me"
-                  className="font-normal text-sm cursor-pointer"
-                >
-                  Remember me
-                </FieldLabel>
-              </Field>
-            </FieldGroup>
+            <div className="flex items-center justify-between">
+              <FieldGroup className="w-full max-w-56">
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="remember-me"
+                    checked={rememberMe}
+                    onCheckedChange={(checked) =>
+                      setRememberMe(checked as boolean)
+                    }
+                  />
+                  <FieldLabel
+                    htmlFor="remember-me"
+                    className="font-normal text-sm cursor-pointer"
+                  >
+                    Remember me
+                  </FieldLabel>
+                </Field>
+              </FieldGroup>
+              <button
+                type="button"
+                onClick={() => setForgotOpen(true)}
+                className="text-sm text-primary hover:underline cursor-pointer"
+              >
+                Forgot password?
+              </button>
+            </div>
 
             <Button type="submit" className="w-full" disabled={isLoginPending}>
               {isLoginPending ? <Spinner /> : "Sign in"}
@@ -174,6 +185,8 @@ export default function LoginPage() {
           </form>
         </Form>
       </CardContent>
+
+      <ForgotPasswordDialog open={forgotOpen} onOpenChange={setForgotOpen} />
     </Card>
   );
 }

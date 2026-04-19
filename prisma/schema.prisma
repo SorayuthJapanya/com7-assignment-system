@@ -21,6 +21,7 @@ model User {
   nickname    String       @db.VarChar(50)
   role         Role         @default(STAFF)
   profileImage String?      @db.VarChar(500)
+  resetAt      DateTime?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   assignments Assignment[]

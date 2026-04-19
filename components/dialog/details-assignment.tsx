@@ -187,6 +187,22 @@ export default function ManageAssignment({
               </span>
             </div>
 
+            {/* Submitted At */}
+            {selectedAssignment.submissionUrl !== "" && (
+              <div className="flex items-center gap-2 text-sm flex-wrap">
+                <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
+                <Label className="text-muted-foreground">Submitted At:</Label>
+                <span className="font-medium" suppressHydrationWarning>
+                  {format(new Date(selectedAssignment.submitAt), "dd/MM/yyyy HH:mm:ss")}
+                </span>
+                {new Date(selectedAssignment.submitAt) > new Date(selectedAssignment.deadline) && (
+                  <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-red-100 text-red-700">
+                    Late Submit
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Feedback */}
             {selectedAssignment.feedback && (
               <div className="space-y-1 bg-muted/50 border rounded-md p-3">

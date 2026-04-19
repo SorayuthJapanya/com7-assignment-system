@@ -55,32 +55,47 @@ export async function GET(request: NextRequest) {
       endDate = new Date(year, 11, 31, 23, 59, 59, 999);
     }
 
-    // Reusable Prisma ORM date filter
-    const dateWhere = startDate && endDate
-      ? { createdAt: { gte: startDate, lte: endDate } }
+    // Fetch user's resetAt
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { resetAt: true },
+    });
+    const resetAt = currentUser?.resetAt ?? null;
+
+    // Reusable createdAt filter combining date range + resetAt
+    const createdAtFilter = {
+      ...(startDate ? { gte: startDate } : {}),
+      ...(endDate ? { lte: endDate } : {}),
+      ...(resetAt ? { gt: resetAt } : {}),
+    };
+    const dateWhere = Object.keys(createdAtFilter).length > 0
+      ? { createdAt: createdAtFilter }
       : {};
 
     // Run queries sequentially to avoid exceeding connection pool limit
-    // KPI 1: Total Assignment (filter by userId, optional year/month)
+    // KPI 1: Total Assignment (filter by userId, optional year/month, resetAt)
     const totalAssignments = await prisma.assignment.count({
       where: { userId, ...dateWhere },
     });
 
-    // KPI 2: Total Approve (filter by userId, optional year/month)
+    // KPI 2: Total Approve (filter by userId, optional year/month, resetAt)
     const totalApproved = await prisma.assignment.count({
       where: { userId, status: "Approved", ...dateWhere },
     });
 
-    // KPI 3: Total Reject (filter by userId, optional year/month)
+    // KPI 3: Total Reject (filter by userId, optional year/month, resetAt)
     const totalRejected = await prisma.assignment.count({
       where: { userId, status: "Rejected", ...dateWhere },
     });
 
-    // KPI 4: Total Score (filter by userId, optional year/month)
+    // KPI 4: Total Score (filter by userId, optional year/month, resetAt)
     const totalScore = await prisma.assignment.aggregate({
       where: { userId, finalScore: { gt: 0 }, ...dateWhere },
       _sum: { finalScore: true },
     });
+
+    // resetAt fallback: epoch means "no lower bound"
+    const resetAtFilter = resetAt ?? new Date(0);
 
     // Chart 1: Monthly Trend (User's assignment trend over months for chartYear)
     const monthlyTrendData = await prisma.$queryRaw<UserMonthlyTrend[]>`
@@ -99,6 +114,7 @@ export async function GET(request: NextRequest) {
         FROM "Assignment"
         WHERE "userId" = ${userId}
           AND EXTRACT(YEAR FROM "createdAt") = ${chartYear}
+          AND "createdAt" > ${resetAtFilter}
         GROUP BY TO_CHAR("createdAt", 'YYYY-MM')
       )
       SELECT
@@ -116,44 +132,52 @@ export async function GET(request: NextRequest) {
             SELECT COUNT(*) as total FROM "Assignment"
             WHERE "userId" = ${userId}
               AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+              AND "createdAt" > ${resetAtFilter}
           )
           SELECT 'Pending' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
           FROM "Assignment"
           WHERE "userId" = ${userId} AND status = 'Pending'
             AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+            AND "createdAt" > ${resetAtFilter}
           UNION ALL
           SELECT 'Approved' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
           FROM "Assignment"
           WHERE "userId" = ${userId} AND status = 'Approved'
             AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+            AND "createdAt" > ${resetAtFilter}
           UNION ALL
           SELECT 'Rejected' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
           FROM "Assignment"
           WHERE "userId" = ${userId} AND status = 'Rejected'
             AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+            AND "createdAt" > ${resetAtFilter}
         `
       : await prisma.$queryRaw<UserStatusDistribution[]>`
           WITH total_assignments AS (
             SELECT COUNT(*) as total FROM "Assignment"
             WHERE "userId" = ${userId}
+              AND "createdAt" > ${resetAtFilter}
           )
           SELECT 'Pending' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
           FROM "Assignment"
           WHERE "userId" = ${userId} AND status = 'Pending'
+            AND "createdAt" > ${resetAtFilter}
           UNION ALL
           SELECT 'Approved' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
           FROM "Assignment"
           WHERE "userId" = ${userId} AND status = 'Approved'
+            AND "createdAt" > ${resetAtFilter}
           UNION ALL
           SELECT 'Rejected' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
           FROM "Assignment"
           WHERE "userId" = ${userId} AND status = 'Rejected'
+            AND "createdAt" > ${resetAtFilter}
         `;
 
     // Chart 3: Score By Month (User's total score per month for chartYear)
@@ -174,6 +198,7 @@ export async function GET(request: NextRequest) {
         WHERE a."userId" = ${userId}
           AND EXTRACT(YEAR FROM a."createdAt") = ${chartYear}
           AND a."finalScore" > 0
+          AND a."createdAt" > ${resetAtFilter}
         GROUP BY TO_CHAR(a."createdAt", 'YYYY-MM')
       )
       SELECT

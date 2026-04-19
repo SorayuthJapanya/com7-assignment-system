@@ -78,3 +78,14 @@ export const deleteUser = async (id: string): Promise<{ message: string }> => {
   );
   return response.data;
 };
+
+export const resetPassword = async (data: {
+  username: string;
+  newPassword: string;
+}): Promise<{ message: string }> => {
+  const response = await axiosInstance.post<{ message: string }>(
+    "/api/auth/reset-password",
+    data,
+  );
+  return response.data;
+};

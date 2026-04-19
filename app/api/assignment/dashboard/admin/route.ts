@@ -141,12 +141,6 @@ export async function GET(request: NextRequest) {
             SELECT COUNT(*) as total FROM "Assignment"
             WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
           )
-          SELECT 'Submitted' as name, COUNT(*) as value,
-            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-          FROM "Assignment"
-          WHERE "submitAt" > "createdAt"
-            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
-          UNION ALL
           SELECT 'Approved' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
           FROM "Assignment"
@@ -175,10 +169,6 @@ export async function GET(request: NextRequest) {
           WITH total_assignments AS (
             SELECT COUNT(*) as total FROM "Assignment"
           )
-          SELECT 'Submitted' as name, COUNT(*) as value,
-            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-          FROM "Assignment" WHERE "submitAt" > "createdAt"
-          UNION ALL
           SELECT 'Approved' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
           FROM "Assignment" WHERE status = 'Approved'
@@ -310,7 +300,6 @@ export async function GET(request: NextRequest) {
             percentage: Number(item.percentage || 0),
           })),
           colors: [
-            "#3b82f6", // Submitted - Blue
             "#10b981", // Approved - Green
             "#ef4444", // Rejected - Red
             "#f59e0b", // Late Submit - Orange

@@ -11,9 +11,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, RotateCcw, Trash2 } from "lucide-react";
 import Swal from "sweetalert2";
 import { useDeleteUser } from "@/hooks/use-auth";
+import { useResetUserScore } from "@/hooks/use-score";
 import { useState } from "react";
 import EditUserDialog from "@/components/dialog/edit-user";
 import { useAuthUser } from "@/contexts/auth-context";
@@ -27,10 +28,31 @@ export default function UserTable({ data }: UserTableProps) {
   const authUser = useAuthUser();
 
   const { mutateAsync: deleteUser } = useDeleteUser();
+  const { mutateAsync: resetScore } = useResetUserScore();
 
   if (!data || data.length === 0) {
     return null;
   }
+
+  const handleResetScore = async (id: string, username: string) => {
+    const result = await Swal.fire({
+      icon: "question",
+      title: "Reset Score?",
+      text: `Do you want to reset score for "${username}"? This action cannot be undone.`,
+      showCancelButton: true,
+      confirmButtonText: "Yes, reset it!",
+      confirmButtonColor: "#f97316",
+    });
+    if (result.isConfirmed) {
+      Swal.fire({
+        title: "Resetting...",
+        text: "Please wait",
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+      });
+      await resetScore({ userId: id });
+    }
+  };
 
   const handleDelete = async (id: string) => {
     const result = await Swal.fire({
@@ -63,6 +85,7 @@ export default function UserTable({ data }: UserTableProps) {
             <TableHead>Nickname</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Role</TableHead>
+            <TableHead className="text-center">Score</TableHead>
             <TableHead className="text-center">Created At</TableHead>
             <TableHead className="text-center">Action</TableHead>
           </TableRow>
@@ -75,13 +98,13 @@ export default function UserTable({ data }: UserTableProps) {
               <TableCell className="text-center font-medium">
                 {index + 1}
               </TableCell>
-              <TableCell className="font-medium max-w-[150px] truncate">
+              <TableCell className="font-medium max-w-36 truncate">
                 {user.username}
               </TableCell>
-              <TableCell className="max-w-[150px] truncate">
+              <TableCell className="max-w-36 truncate">
                 {user.nickname}
               </TableCell>
-              <TableCell className="max-w-[200px] truncate">
+              <TableCell className="max-w-50 truncate">
                 {user.email}
               </TableCell>
               <TableCell>
@@ -96,6 +119,9 @@ export default function UserTable({ data }: UserTableProps) {
                 >
                   {user.role}
                 </span>
+              </TableCell>
+              <TableCell className="text-center font-medium tabular-nums">
+                {user.totalScore ?? 0}
               </TableCell>
               <TableCell className="text-center">
                 {user.createdAt
@@ -116,6 +142,16 @@ export default function UserTable({ data }: UserTableProps) {
                     title={isOwn ? "Cannot edit your own account" : undefined}
                   >
                     <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="icon"
+                    disabled={isOwn}
+                    className="h-8 w-8 cursor-pointer"
+                    onClick={() => handleResetScore(user.id, user.username)}
+                    title="Reset score"
+                  >
+                    <RotateCcw className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="destructive"

@@ -3,7 +3,7 @@
 import LevelBadge from "@/components/shared/level-badge";
 import { LeaderboardEntry, ILevel } from "@/types/level";
 import { cn } from "@/lib/utils";
-import { Flame, Star, Trophy } from "lucide-react";
+import { Clock, Flame, Star, Trophy } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Table,
@@ -23,9 +23,10 @@ interface LeaderboardTableProps {
 
 function resolveProgress(score: number, levels: ILevel[]) {
   const sorted = [...levels].sort((a, b) => a.minScore - b.minScore);
-  const current = sorted.find((l) => score >= l.minScore && score <= l.maxScore)
-    ?? sorted.filter((l) => score > l.maxScore).at(-1)
-    ?? null;
+  const current =
+    sorted.find((l) => score >= l.minScore && score <= l.maxScore) ??
+    sorted.filter((l) => score > l.maxScore).at(-1) ??
+    null;
   const next = current
     ? sorted.find((l) => l.minScore > current.maxScore) ?? null
     : sorted[0] ?? null;
@@ -33,9 +34,10 @@ function resolveProgress(score: number, levels: ILevel[]) {
   if (!current) return { progress: 0, color: null, nextName: next?.name ?? null };
 
   const rangeSize = current.maxScore - current.minScore;
-  const progress = rangeSize > 0
-    ? Math.min(100, Math.round(((score - current.minScore) / rangeSize) * 100))
-    : 100;
+  const progress =
+    rangeSize > 0
+      ? Math.min(100, Math.round(((score - current.minScore) / rangeSize) * 100))
+      : 100;
 
   return { progress, color: current.color, nextName: next ? `${next.emoji} ${next.name}` : null };
 }
@@ -50,134 +52,195 @@ function LevelProgressBar({ score, levels }: { score: number; levels: ILevel[] }
   }, [progress]);
 
   return (
-    <div className="flex flex-col gap-1 min-w-32">
-      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+    <div className="flex flex-col gap-0.5 w-full">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
         <div
-          className="h-full rounded-full transition-[width] duration-[1500ms] ease-out"
-          style={{
-            width: `${animated}%`,
-            backgroundColor: color ?? "hsl(var(--primary))",
-          }}
+          className="h-full rounded-full transition-[width] duration-1500 ease-out"
+          style={{ width: `${animated}%`, backgroundColor: color ?? "#a78bfa" }}
         />
       </div>
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+      <div className="flex items-center justify-between text-[10px] text-white/35">
         <span className="tabular-nums">{progress}%</span>
-        {nextName && <span className="truncate max-w-24">→ {nextName}</span>}
+        {nextName && <span className="truncate max-w-20">→ {nextName}</span>}
       </div>
     </div>
   );
+}
+
+function formatOverdue(seconds: number): string {
+  if (seconds <= 0) return "—";
+  const total = Math.floor(seconds);
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  if (days > 0) return `${days}days ${pad(hours)}:${pad(minutes)}`;
+  return `${pad(hours)}:${pad(minutes)}`;
 }
 
 export default function LeaderboardTable({ entries, currentUserId }: LeaderboardTableProps) {
   const { data: levels = [] } = useGetLevels();
 
   return (
-    <div className="rounded-xl border bg-card overflow-hidden">
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ background: "linear-gradient(160deg, #1e0a4a 0%, #0d0520 100%)" }}
+    >
       <Table>
         <TableHeader>
-          <TableRow className="bg-muted/40 hover:bg-muted/40">
-            <TableHead className="text-center w-12">Rank</TableHead>
-            <TableHead className="w-26">Player</TableHead>
-            <TableHead className="w-[40%] text-left hidden sm:table-cell">Progress</TableHead>
-            <TableHead className="text-center hidden sm:table-cell">Level</TableHead>
-            <TableHead className="text-center hidden sm:table-cell">
-              <span className="inline-flex items-center gap-1">
-                <Trophy className="size-3" /> Tasks
+          <TableRow
+            className="border-b hover:bg-transparent"
+            style={{ borderColor: "rgba(255,255,255,0.08)" }}
+          >
+            <TableHead className="w-12 text-center text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+              Rank
+            </TableHead>
+            <TableHead className="w-40 text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+              Player
+            </TableHead>
+            <TableHead className="w-160 hidden sm:table-cell text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+              Progress
+            </TableHead>
+            <TableHead className="w-40 hidden sm:table-cell text-center text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+              <span className="inline-flex items-center justify-center gap-1">
+                <Trophy className="size-3 text-emerald-400" /> Tasks
               </span>
             </TableHead>
-            <TableHead className="text-right">
-              <span className="inline-flex items-center gap-1 justify-end">
-                <Star className="size-3 text-violet-500" /> Score
+            <TableHead className="w-40 hidden sm:table-cell text-center text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+              <span className="inline-flex items-center justify-center gap-1">
+                <Clock className="size-3 text-red-400" /> Delayed (Tasks)
               </span>
             </TableHead>
-            <TableHead className="text-right hidden sm:table-cell">
-              <span className="inline-flex items-center gap-1 justify-end">
+            <TableHead className="w-40 text-center text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+              <span className="inline-flex items-center justify-end gap-1">
+                <Star className="size-3 text-violet-400" /> Score
+              </span>
+            </TableHead>
+            <TableHead className="w-40 hidden sm:table-cell text-center text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+              <span className="inline-flex items-center justify-end gap-1">
                 <Flame className="size-3 text-orange-400" /> Avg
+              </span>
+            </TableHead>
+            <TableHead className="hidden sm:table-cell text-center text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+              <span className="inline-flex items-center justify-center gap-1">
+                <Clock className="size-3 text-rose-400" /> Overdue
               </span>
             </TableHead>
           </TableRow>
         </TableHeader>
+
         <TableBody>
-          {entries.map((entry) => {
+          {entries.map((entry, idx) => {
             const isMe = currentUserId === entry.userId;
             return (
               <TableRow
                 key={entry.userId}
                 className={cn(
-                  "transition-colors",
-                  isMe
-                    ? "bg-primary/5 border-l-2 border-l-primary hover:bg-primary/10"
-                    : "hover:bg-muted/30",
+                  "border-b transition-colors",
+                  isMe ? "border-l-2 border-l-violet-400" : "",
                 )}
+                style={{
+                  borderBottomColor: "rgba(255,255,255,0.05)",
+                  background: isMe
+                    ? "rgba(139,92,246,0.12)"
+                    : idx % 2 === 0
+                    ? "rgba(255,255,255,0.015)"
+                    : "transparent",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLTableRowElement).style.background = isMe
+                    ? "rgba(139,92,246,0.2)"
+                    : "rgba(255,255,255,0.04)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLTableRowElement).style.background = isMe
+                    ? "rgba(139,92,246,0.12)"
+                    : idx % 2 === 0
+                    ? "rgba(255,255,255,0.015)"
+                    : "transparent";
+                }}
               >
                 {/* Rank */}
-                <TableCell className="text-center font-bold text-sm text-muted-foreground">
+                <TableCell className="text-center font-bold tabular-nums text-sm text-white/30">
                   #{entry.rank}
                 </TableCell>
 
                 {/* Player */}
                 <TableCell>
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <Avatar className="size-8 sm:size-9 border border-primary/20 shrink-0">
-                      <AvatarImage src={entry.profileImage ?? undefined} alt={entry.nickname || entry.username} />
-                      <AvatarFallback className="bg-primary/10 text-xs font-bold text-primary">
+                    <Avatar
+                      className="size-8 sm:size-9 shrink-0"
+                      style={{ border: "1px solid rgba(167,139,250,0.3)" }}
+                    >
+                      <AvatarImage
+                        src={entry.profileImage ?? undefined}
+                        alt={entry.nickname || entry.username}
+                      />
+                      <AvatarFallback
+                        className="text-xs font-bold"
+                        style={{ background: "rgba(167,139,250,0.15)", color: "#a78bfa" }}
+                      >
                         {(entry.nickname || entry.username).slice(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <p className="font-semibold truncate text-sm">
+                      <p className="font-semibold text-white truncate text-sm leading-tight">
                         {entry.nickname || entry.username}
                         {isMe && (
-                          <span className="ml-1.5 text-xs font-normal text-primary">(You)</span>
+                          <span className="ml-1.5 text-xs font-normal text-violet-300">(You)</span>
                         )}
                       </p>
-                      <p className="text-xs text-muted-foreground truncate">@{entry.username}</p>
-                      {/* Level + Tasks — mobile only */}
-                      <div className="flex items-center gap-2 mt-1 sm:hidden">
-                        {entry.level ? (
-                          <LevelBadge level={entry.level} size="sm" />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                        <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                          <Trophy className="size-3 inline mr-0.5" />{entry.assignmentCount}
+                      <p className="text-[11px] text-white/35 truncate">@{entry.username}</p>
+                      {/* Mobile: level + tasks */}
+                      <div className="flex items-center gap-2 mt-0.5 sm:hidden">
+                        {entry.level && <LevelBadge level={entry.level} size="sm" />}
+                        <span className="text-xs font-semibold text-emerald-400 inline-flex items-center gap-0.5">
+                          <Trophy className="size-3" />
+                          {entry.assignmentCount}
                         </span>
                       </div>
                     </div>
                   </div>
                 </TableCell>
 
-                {/* Progress Bar — desktop */}
+                {/* Progress + Level — desktop */}
                 <TableCell className="hidden sm:table-cell">
-                  {levels.length > 0 ? (
-                    <LevelProgressBar score={entry.totalScore} levels={levels} />
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-
-                {/* Level — desktop */}
-                <TableCell className="text-center hidden sm:table-cell">
-                  {entry.level ? (
-                    <LevelBadge level={entry.level} size="sm" />
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {entry.level && <LevelBadge level={entry.level} size="sm" />}
+                    {levels.length > 0 ? (
+                      <LevelProgressBar score={entry.totalScore} levels={levels} />
+                    ) : (
+                      <span className="text-xs text-white/30">—</span>
+                    )}
+                  </div>
                 </TableCell>
 
                 {/* Tasks — desktop */}
-                <TableCell className="text-center text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400 hidden sm:table-cell">
+                <TableCell className="hidden sm:table-cell text-center font-semibold tabular-nums text-sm text-emerald-400">
                   {entry.assignmentCount}
                 </TableCell>
 
+                {/* Delayed — desktop */}
+                <TableCell className="hidden sm:table-cell text-center font-semibold tabular-nums text-sm text-red-400">
+                  {entry.lateCount > 0 ? entry.lateCount : <span className="text-white/20">—</span>}
+                </TableCell>
+
                 {/* Score */}
-                <TableCell className="text-right font-bold tabular-nums text-sm text-violet-600 dark:text-violet-400">
+                <TableCell className="text-center font-bold tabular-nums text-sm"
+                  style={{ color: "#a78bfa", textShadow: "0 0 10px #a78bfa66" }}
+                >
                   {entry.totalScore.toLocaleString()}
                 </TableCell>
 
-                {/* Avg Score — desktop */}
-                <TableCell className="text-right text-sm font-semibold tabular-nums text-orange-500 hidden sm:table-cell">
+                {/* Avg — desktop */}
+                <TableCell className="hidden sm:table-cell text-center font-semibold tabular-nums text-sm text-orange-400">
                   {entry.avgScore.toLocaleString()}
+                </TableCell>
+
+                {/* Overdue — desktop */}
+                <TableCell className="hidden sm:table-cell text-center font-semibold tabular-nums text-sm text-rose-400">
+                  {entry.overdueSeconds > 0 ? formatOverdue(entry.overdueSeconds) : <span className="text-white/20">—</span>}
                 </TableCell>
               </TableRow>
             );

@@ -38,13 +38,22 @@ export async function GET(request: NextRequest) {
         email: true,
         nickname: true,
         role: true,
+        resetAt: true,
         createdAt: true,
+        scores: {
+          select: { score: true, createdAt: true },
+        },
       },
     });
 
-    return NextResponse.json({
-      data: users,
-    });
+    const data = users.map(({ scores, resetAt, ...user }) => ({
+      ...user,
+      totalScore: scores
+        .filter((s) => !resetAt || s.createdAt > resetAt)
+        .reduce((sum, s) => sum + s.score, 0),
+    }));
+
+    return NextResponse.json({ data });
   } catch (error) {
     console.error("Get users error:", error);
     return NextResponse.json(

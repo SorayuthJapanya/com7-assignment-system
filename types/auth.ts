@@ -5,6 +5,7 @@ export interface IUser {
   nickname: string;
   role: string;
   profileImage?: string;
+  totalScore?: number;
   createdAt: Date;
   updatedAt?: Date;
 }

@@ -44,7 +44,7 @@ export default function AddUserDialog({
   const { mutateAsync: addUser, isPending } = useAddUser();
 
   const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema as any),
+    resolver: zodResolver(formSchema),
     defaultValues: {
       username: "",
       email: "",

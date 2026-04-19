@@ -34,6 +34,8 @@ export interface LeaderboardEntry {
   totalScore: number;
   avgScore: number;
   assignmentCount: number;
+  lateCount: number;
+  overdueSeconds: number;
   level: ILevel | null;
 }
 

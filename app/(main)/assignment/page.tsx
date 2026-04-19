@@ -79,7 +79,12 @@ export default function MyAssignmentPage() {
     key: keyof IFilteredAssignment,
     value: string | number | boolean,
   ) => {
-    setFiltered({ ...filtered, [key]: value, page: 1 });
+    console.log(key, value);
+    if (key === "page") {
+      setFiltered((prev) => ({ ...prev, page: value as number }));
+    } else {
+      setFiltered((prev) => ({ ...prev, [key]: value, page: 1 }));
+    }
   };
 
   const handleClear = () => {

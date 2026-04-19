@@ -2,7 +2,6 @@
 
 import { useUserDashboard } from "@/hooks/user-dashboard";
 import { Loader2 } from "lucide-react";
-import { useGetAssignments } from "@/hooks/use-assignment";
 import UserChartsSection from "./user-charts-section";
 import ProfileCard from "./profile-card";
 import UserInfoGrid from "./user-info-grid";

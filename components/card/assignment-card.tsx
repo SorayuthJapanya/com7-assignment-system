@@ -92,7 +92,7 @@ export default function AssignmentCard({
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <CalendarDays className="w-4 h-4" />
           <span>
-            Due: {format(new Date(assignment.deadline), "dd/MM/yyyy")}
+            Due: {format(new Date(assignment.deadline), "dd/MM/yyyy HH:mm")}
           </span>
         </div>
         <span

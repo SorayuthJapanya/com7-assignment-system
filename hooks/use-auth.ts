@@ -5,6 +5,7 @@ import {
   login,
   logout,
   register,
+  resetPassword,
   updateUser,
   uploadProfileImage,
 } from "@/services/auth-services";
@@ -203,6 +204,25 @@ export const useDeleteUser = () => {
       Swal.fire({
         icon: "error",
         title: "Delete Failed",
+        text: error?.response?.data?.error || "Something went wrong",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+  });
+};
+
+export const useResetPassword = () => {
+  return useMutation<
+    { message: string },
+    AxiosError<AxiosErrorResponse>,
+    { username: string; newPassword: string }
+  >({
+    mutationFn: resetPassword,
+    onError: (error) => {
+      Swal.fire({
+        icon: "error",
+        title: "Reset Password Failed",
         text: error?.response?.data?.error || "Something went wrong",
         timer: 2000,
         showConfirmButton: false,
