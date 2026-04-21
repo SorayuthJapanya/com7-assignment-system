@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
     const assignments = await prisma.assignment.findMany({
       where,
       orderBy: {
-        createdAt: "desc",
+        deadline: "asc",
       },
       skip,
       take: limit,
