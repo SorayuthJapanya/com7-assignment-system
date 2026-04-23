@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
         nickname: row.nickname,
         profileImage: row.profileImage,
         totalScore,
-        avgScore: assignmentCount > 0 ? Math.round((totalScore / assignmentCount) * 10) / 10 : 0,
+        avgScore: assignmentCount > 0 ? Math.round((totalScore / (assignmentCount - lateCount)) * 10) / 10 : 0,
         assignmentCount,
         lateCount,
         overdueSeconds,
