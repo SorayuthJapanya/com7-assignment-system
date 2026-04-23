@@ -323,7 +323,7 @@ function LeaderboardRow({
           )}
           <StatChip
             icon={<Flame className="size-3" />}
-            value={entry.avgScore.toLocaleString()}
+            value={`${entry.avgScore}%`}
             color="orange"
             label="Avg"
           />
