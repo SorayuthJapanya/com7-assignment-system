@@ -7,7 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { format } from "date-fns";
-import { Coins, CalendarDays, User, Users } from "lucide-react";
+import { Coins, CalendarDays, Clock, User, Users } from "lucide-react";
 
 interface AssignmentCardProps {
   assignment: IAssignment;
@@ -20,6 +20,21 @@ export default function AssignmentCard({
 }: AssignmentCardProps) {
   const resultStatus =
     assignment.submissionUrl === "" ? "Not Submit" : assignment.status;
+
+  const isLate = assignment.submitAt > assignment.deadline;
+
+  const getDelay = () => {
+    const diffMs =
+      new Date(assignment.submitAt).getTime() -
+      new Date(assignment.deadline).getTime();
+    const totalMinutes = Math.floor(diffMs / 60000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    const time = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+    if (days > 0) return `${days} ${days === 1 ? "day" : "days"} ${time}`;
+    return time;
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -103,18 +118,21 @@ export default function AssignmentCard({
 
             {/* Submitted at */}
             {assignment.submitAt > assignment.createdAt && (
-              <div className="flex items-center gap-2">
-                <CalendarDays className="w-4 h-4" />
-                <span>
-                  Submitted:{" "}
-                  {format(new Date(assignment.submitAt), "dd/MM/yyyy HH:mm")}
-                </span>
-                {assignment.submitAt > assignment.deadline && (
-                  <span className="text-xs font-medium text-red-500 bg-red-50 px-1.5 py-0.5 rounded-sm">
-                    Late
+              <>
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4" />
+                  <span>
+                    Submitted:{" "}
+                    {format(new Date(assignment.submitAt), "dd/MM/yyyy HH:mm")}
                   </span>
+                </div>
+                {isLate && (
+                  <div className="flex items-center gap-2 text-red-500" >
+                    <Clock className="w-4 h-4" />
+                    <span>Delay: {getDelay()}</span>
+                  </div>
                 )}
-              </div>
+              </>
             )}
           </div>
         </div>
