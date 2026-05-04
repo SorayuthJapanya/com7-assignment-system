@@ -57,7 +57,9 @@ export default function AssignmentCard({
               </div>
               {assignment.assignTo && (
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/40 border px-2.5 py-1 rounded-md">
-                  <span className="font-medium text-foreground">Assigned To:</span>
+                  <span className="font-medium text-foreground">
+                    Assigned To:
+                  </span>
                   {assignment.assignTo}
                 </div>
               )}
@@ -90,10 +92,31 @@ export default function AssignmentCard({
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <CalendarDays className="w-4 h-4" />
-          <span>
-            Due: {format(new Date(assignment.deadline), "dd/MM/yyyy HH:mm")}
-          </span>
+          <div className="flex flex-col gap-1">
+            {/* Due date */}
+            <div className="flex items-center gap-2">
+              <CalendarDays className="w-4 h-4" />
+              <span>
+                Due: {format(new Date(assignment.deadline), "dd/MM/yyyy HH:mm")}
+              </span>
+            </div>
+
+            {/* Submitted at */}
+            {assignment.submitAt > assignment.createdAt && (
+              <div className="flex items-center gap-2">
+                <CalendarDays className="w-4 h-4" />
+                <span>
+                  Submitted:{" "}
+                  {format(new Date(assignment.submitAt), "dd/MM/yyyy HH:mm")}
+                </span>
+                {assignment.submitAt > assignment.deadline && (
+                  <span className="text-xs font-medium text-red-500 bg-red-50 px-1.5 py-0.5 rounded-sm">
+                    Late
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         <span
           className={`${getStatusColor(resultStatus)} px-4 py-1 rounded-md text-xs font-medium whitespace-nowrap`}
