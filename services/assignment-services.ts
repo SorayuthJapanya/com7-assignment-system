@@ -18,6 +18,8 @@ export const getAssignments = async ({
   type,
   username,
   deadlineMonth,
+  deadlineFrom,
+  deadlineTo,
 }: IFilteredAssignment): Promise<GetAssignmentsResponse> => {
   const response = await axiosInstance.get("/api/assignment", {
     params: {
@@ -29,6 +31,8 @@ export const getAssignments = async ({
       type,
       username,
       deadlineMonth,
+      deadlineFrom,
+      deadlineTo,
     },
   });
 

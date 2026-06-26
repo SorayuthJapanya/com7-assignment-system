@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
         COALESCE(sc."totalScore", 0) as "totalScore",
         COALESCE(ac."assignmentCount", 0) as "assignmentCount",
         COALESCE(late."lateCount", 0) as "lateCount",
-        COALESCE(late."overdueSeconds", 0) as "overdueSeconds"
+        GREATEST(COALESCE(late."overdueSeconds", 0) - COALESCE(deduction."redeemedMinutes", 0) * 5 * 60, 0) as "overdueSeconds"
       FROM "User" u
       LEFT JOIN (
         SELECT
@@ -82,6 +82,18 @@ export async function GET(request: NextRequest) {
         ${lateDateFilter}
         GROUP BY a."userId"
       ) late ON u.id = late."userId"
+      LEFT JOIN (
+        SELECT
+          s."recipient_id",
+          ABS(SUM(s.score)) as "redeemedMinutes"
+        FROM "Score" s
+        JOIN "User" ur ON ur.id = s."recipient_id"
+        WHERE s.score < 0
+          AND s."reviewer" = 'Overdue Deduction'
+          AND s."assignment_title" = 'Redeem overdue minutes'
+          AND (ur."resetAt" IS NULL OR s."createdAt" > ur."resetAt")
+        GROUP BY s."recipient_id"
+      ) deduction ON u.id = deduction."recipient_id"
       WHERE u.role != 'SUPER_ADMIN'
       ORDER BY "totalScore" DESC
     `);
@@ -92,7 +104,7 @@ export async function GET(request: NextRequest) {
       const totalScore = Number(row.totalScore);
       const assignmentCount = Number(row.assignmentCount);
       const lateCount = Number(row.lateCount);
-      const overdueSeconds = Number(row.overdueSeconds);
+      const overdueSeconds = Math.max(0, Number(row.overdueSeconds));
       const level = levels.find(
         (l) => totalScore >= l.minScore && totalScore <= l.maxScore
       ) || null;

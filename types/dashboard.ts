@@ -99,6 +99,7 @@ export interface UserDashboardKPIs {
   totalRejected: number;
   totalScore: number;
   avgScore: number;
+  streak: number;
 }
 
 export interface UserChartsResponse {

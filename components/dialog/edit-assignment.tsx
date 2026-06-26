@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect } from "react";
 import {
   Dialog,
@@ -50,7 +52,7 @@ export default function EditAssignment({
     if (selectedAssignment) {
       setTimeout(() => {
         setTitle(selectedAssignment.title);
-        setDescription(selectedAssignment.description);
+        setDescription(selectedAssignment.description || "");
         setReward(selectedAssignment.reward.toString());
         setDeadline(new Date(selectedAssignment.deadline));
       }, 0);
@@ -69,6 +71,7 @@ export default function EditAssignment({
       icon: "question",
       showCancelButton: true,
       confirmButtonText: "Yes, update it!",
+      cancelButtonText: "Cancel",
     });
 
     if (result.isConfirmed) {
@@ -80,15 +83,29 @@ export default function EditAssignment({
           Swal.showLoading();
         },
       });
-      await updateAssignment({
-        id: currentAssignment.id,
-        data: {
-          title,
-          description,
-          reward: Number(reward),
-          deadline: deadline || new Date(),
-        },
-      });
+
+      try {
+        await updateAssignment({
+          id: currentAssignment.id,
+          data: {
+            title,
+            description,
+            reward: Number(reward),
+            deadline: deadline || new Date(),
+          },
+        });
+
+        Swal.fire({
+          title: "Success!",
+          text: "Assignment updated successfully.",
+          icon: "success",
+          timer: 1500,
+          showConfirmButton: false,
+        });
+      } catch (error) {
+        setSelectedAssignment(currentAssignment);
+        Swal.fire("Error", "Failed to update assignment.", "error");
+      }
     } else {
       setSelectedAssignment(currentAssignment);
     }
@@ -103,49 +120,58 @@ export default function EditAssignment({
         }
       }}
     >
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Assignment</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="sm:max-w-xl rounded-2xl p-6 gap-5 max-h-[95vh] overflow-y-auto border border-gray-100 shadow-xl">
+        <DialogHeader className="space-y-0.5">
+          <DialogTitle className="text-xl font-bold text-gray-900">Edit Assignment</DialogTitle>
+          <DialogDescription className="text-sm text-gray-400">
             Update the assignment details below.
           </DialogDescription>
         </DialogHeader>
+        
         {selectedAssignment && (
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="edit-title" className="font-semibold">
+          <div className="space-y-4 py-1">
+            {/* 1. ส่วนของ Title - เปลี่ยนขอบกล่องให้เป็นสีเขียวมะนาวโค้งมนตามรูปภาพ */}
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-title" className="text-sm font-semibold text-gray-800">
                 Title
               </Label>
-              <ComboboxInput
-                value={title}
-                onChange={setTitle}
-                placeholder="Assignment title"
-                presets={titlePresets.presets}
-                onAddPreset={titlePresets.addPreset}
-                onUpdatePreset={titlePresets.updatePreset}
-                onRemovePreset={titlePresets.removePreset}
-              />
+              <div className="[&>button]:border-[#b4e144] [&>button]:ring-1 [&>button]:ring-[#b4e144] [&>button]:rounded-xl [&>button]:h-12 [&>button]:px-4">
+                <ComboboxInput
+                  value={title}
+                  onChange={setTitle}
+                  placeholder="Assignment title"
+                  presets={titlePresets.presets}
+                  onAddPreset={titlePresets.addPreset}
+                  onUpdatePreset={titlePresets.updatePreset}
+                  onRemovePreset={titlePresets.removePreset}
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-description" className="font-semibold">
+            {/* 2. ส่วนของ Description */}
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-description" className="text-sm font-semibold text-gray-800">
                 Description
               </Label>
-              <ComboboxInput
-                value={description}
-                onChange={setDescription}
-                placeholder="Assignment description"
-                presets={descriptionPresets.presets}
-                onAddPreset={descriptionPresets.addPreset}
-                onUpdatePreset={descriptionPresets.updatePreset}
-                onRemovePreset={descriptionPresets.removePreset}
-                multiline
-              />
+              <div className="[&>textarea]:rounded-xl [&>button]:rounded-xl">
+                <ComboboxInput
+                  value={description}
+                  onChange={setDescription}
+                  placeholder="Assignment description"
+                  presets={descriptionPresets.presets}
+                  onAddPreset={descriptionPresets.addPreset}
+                  onUpdatePreset={descriptionPresets.updatePreset}
+                  onRemovePreset={descriptionPresets.removePreset}
+                  multiline
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-reward" className="font-semibold">
+            {/* 3. ส่วน Grid ของ Reward และ Deadline */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Reward Input */}
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-reward" className="text-sm font-semibold text-gray-800">
                   Reward
                 </Label>
                 <Input
@@ -155,32 +181,34 @@ export default function EditAssignment({
                   value={reward}
                   onChange={(e) => setReward(e.target.value)}
                   placeholder="Reward points"
+                  className="h-12 rounded-xl bg-white border-gray-200 focus-visible:ring-1 focus-visible:ring-gray-400 focus-visible:border-gray-400 transition-all px-4"
                 />
               </div>
 
-              <div className="space-y-2 flex flex-col">
-                <Label className="font-semibold">
+              {/* Deadline Date Picker */}
+              <div className="space-y-1.5 flex flex-col">
+                <Label className="text-sm font-semibold text-gray-800">
                   Deadline
                 </Label>
                 <Popover open={dateOpen} onOpenChange={setDateOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       className={cn(
-                        "w-full justify-start text-left font-normal",
+                        "w-full h-12 justify-start text-left font-normal rounded-xl bg-white border-gray-200 hover:bg-gray-50/50 px-4",
                         !deadline && "text-muted-foreground",
                       )}
                       variant="outline"
                       id="edit-deadline"
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      <CalendarIcon className="mr-2 h-4 w-4 opacity-50" />
                       {deadline ? (
-                        `${format(deadline, "PPP")} at ${format(deadline, "HH:mm")}`
+                        format(deadline, "MMMM do, yyyy 'at' HH:mm")
                       ) : (
                         <span>Pick a date and time</span>
                       )}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent align="start" className="w-auto p-0">
+                  <PopoverContent align="end" className="w-auto p-0 rounded-xl shadow-lg border border-gray-100">
                     <div className="divide-y overflow-hidden bg-background">
                       <Calendar
                         mode="single"
@@ -195,10 +223,10 @@ export default function EditAssignment({
                         captionLayout="dropdown"
                         defaultMonth={deadline || new Date()}
                       />
-                      <div className="space-y-2 p-4">
-                        <Label htmlFor="edit-time">Time</Label>
+                      <div className="space-y-1.5 p-4 bg-gray-50/30">
+                        <Label htmlFor="edit-time" className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Time</Label>
                         <Input
-                          className="w-full"
+                          className="w-full h-10 rounded-lg border-gray-200 bg-white"
                           id="edit-time"
                           onChange={(e) => {
                             const [hours, minutes] = e.target.value.split(":");
@@ -217,18 +245,20 @@ export default function EditAssignment({
             </div>
           </div>
         )}
-        <DialogFooter>
+        
+        {/* 4. Footer Section - ปุ่มสีเขียวต้นหญ้าตามรูปภาพจริง */}
+        <DialogFooter className="flex flex-row items-center justify-end gap-2 pt-3 border-t border-gray-50 max-sm:space-x-0">
           <Button
             variant="outline"
             onClick={() => setSelectedAssignment(null)}
-            className="cursor-pointer"
+            className="px-5 h-11 border-gray-200 text-gray-700 font-medium hover:bg-gray-50 rounded-lg"
             disabled={isPending}
           >
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
-            className="cursor-pointer"
+            className="px-5 h-11 bg-[#70ad47] hover:bg-[#62983e] text-white font-semibold rounded-lg transition-colors shadow-sm"
             disabled={isPending}
           >
             Save Changes

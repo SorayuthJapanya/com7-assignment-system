@@ -12,6 +12,9 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
   const response = await axiosInstance.post<LoginResponse>(
     "/api/auth/login",
     data,
+    {
+      headers: { Authorization: "" } // 🎯 พิมพ์เพิ่ม: สั่งล้าง Token เก่าทิ้งเฉพาะ Request นี้
+    }
   );
   return response.data;
 };
@@ -22,6 +25,9 @@ export const register = async (
   const response = await axiosInstance.post<LoginResponse>(
     "/api/auth/register",
     data,
+    {
+      headers: { Authorization: "" } // 🎯 พิมพ์เพิ่ม: สั่งล้าง Token เก่าทิ้งเฉพาะ Request นี้
+    }
   );
   return response.data;
 };

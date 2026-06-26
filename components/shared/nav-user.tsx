@@ -1,22 +1,15 @@
 "use client";
 
-import { ChevronsUpDown, LogOut, UserPen, Camera } from "lucide-react";
+import { LogOut, UserPen, Camera } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "../ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
-} from "../ui/sidebar";
 import {
   Dialog,
   DialogContent,
@@ -37,7 +30,6 @@ import { useRef, useState } from "react";
 export default function NavUser() {
   const authUser = useAuthUser() as IUser | null;
   const { setUser } = useAuth();
-  const { isMobile } = useSidebar();
   const router = useRouter();
 
   const { mutateAsync: logoutMutation } = useLogout();
@@ -54,6 +46,8 @@ export default function NavUser() {
   if (!authUser) return null;
 
   const isBusy = isPending || isUploading;
+  const avatarUrl = authUser.profileImage;
+  const initials = authUser.nickname.charAt(0).toUpperCase();
 
   const handleLogout = async () => {
     const result = await Swal.fire({
@@ -87,7 +81,6 @@ export default function NavUser() {
 
   const handleUpdateProfile = async () => {
     if (!nickname.trim() && !email.trim() && !selectedFile) return;
-
     try {
       Swal.fire({
         title: "Saving...",
@@ -97,14 +90,11 @@ export default function NavUser() {
       });
 
       let profileImageUrl: string | undefined;
-
-      // Step 1: upload image if selected
       if (selectedFile) {
         const uploadRes = await uploadImageMutation(selectedFile);
         profileImageUrl = uploadRes.url;
       }
 
-      // Step 2: update user profile
       const res = await updateUserMutation({
         id: authUser.id,
         data: {
@@ -131,84 +121,57 @@ export default function NavUser() {
     }
   };
 
-  const avatarUrl = authUser.profileImage;
-  const initials = authUser.nickname.charAt(0).toUpperCase();
-
   return (
     <>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <SidebarMenuButton
-                size={"lg"}
-                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-              >
-                <Avatar className="size-10">
-                  <AvatarImage src={avatarUrl} alt={authUser.nickname} />
-                  <AvatarFallback className="rounded-lg bg-primary text-white font-medium">{initials}</AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col">
-                  <p>{authUser.nickname}</p>
-                  <p className="max-w-36 truncate text-sm text-muted-foreground">
-                    {authUser.email}
-                  </p>
-                </div>
-                <ChevronsUpDown className="ml-auto size-4" />
-              </SidebarMenuButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-              side={isMobile ? "bottom" : "bottom"}
-              sideOffset={4}
-            >
-              <DropdownMenuLabel className="p-0 font-normal">
-                <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <Avatar className="size-10">
-                    <AvatarImage src={avatarUrl} alt={authUser.nickname} />
-                    <AvatarFallback className="bg-primary text-white font-medium">{initials}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col">
-                    <p>{authUser.nickname}</p>
-                    <p className="max-w-36 truncate text-sm text-muted-foreground">
-                      {authUser.email}
-                    </p>
-                  </div>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem onClick={handleOpenEditProfile}>
-                  <UserPen /> Edit Profile
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut /> Logout
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      {/* Trigger — ใช้ Avatar เล็กสำหรับ dropdown เท่านั้น */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent transition-colors outline-none">
+            <Avatar className="size-7">
+              <AvatarImage src={avatarUrl} alt={authUser.nickname} />
+              <AvatarFallback className="bg-primary text-white text-xs font-medium">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <span className="text-xs text-muted-foreground">Account settings</span>
+          </button>
+        </DropdownMenuTrigger>
 
+        <DropdownMenuContent
+          className="min-w-48 rounded-lg"
+          side="top"
+          sideOffset={8}
+        >
+          <DropdownMenuGroup>
+            <DropdownMenuItem onClick={handleOpenEditProfile}>
+              <UserPen className="size-4 mr-2" /> Edit Profile
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
+              <LogOut className="size-4 mr-2" /> Logout
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Edit Profile Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Profile</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-5 py-2">
-
-            {/* Avatar upload */}
             <div className="flex flex-col items-center gap-2">
               <div
                 className="relative cursor-pointer group"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Avatar className="size-24 text-3xl">
+                <Avatar className="size-24">
                   <AvatarImage src={previewUrl ?? avatarUrl} alt={authUser.nickname} />
-                  <AvatarFallback className="bg-primary text-white font-medium text-3xl">{initials}</AvatarFallback>
+                  <AvatarFallback className="bg-primary text-white font-medium text-3xl">
+                    {initials}
+                  </AvatarFallback>
                 </Avatar>
-                {/* Hover overlay */}
                 <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                   <Camera className="size-6 text-white" />
                 </div>

@@ -217,10 +217,13 @@ export async function GET(request: NextRequest) {
         totalAssignments,
         totalApproved,
         totalRejected,
+        
         totalScore: totalScore._sum.finalScore || 0,
         avgScore: totalApproved > 0
           ? Math.round(((totalScore._sum.finalScore || 0) / totalApproved) * 10) / 10
-          : 0,
+          : 0
+          ,
+        streak: 0, // Placeholder - replace with actual streak calculation if needed
       },
       charts: {
         // Chart 1: Monthly Trend

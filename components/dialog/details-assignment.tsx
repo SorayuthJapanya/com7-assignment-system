@@ -59,8 +59,10 @@ export default function ManageAssignment({
     }
   };
 
+  const hasFeedback = !!selectedAssignment?.feedback?.trim();
+  const hasSubmission = selectedAssignment?.submissionUrl !== "";
   const resultStatus =
-    selectedAssignment?.submissionUrl === ""
+    !hasSubmission || (hasFeedback && selectedAssignment?.status !== "Approved")
       ? "Not Submit"
       : selectedAssignment?.status || "";
 

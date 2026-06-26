@@ -58,19 +58,37 @@ export default function ReviewAssignment({
   }, [selectedAssignment]);
 
   const handleSubmit = async () => {
-    // Save review data and assignment before closing dialog
-    const reviewData = { status, finalScore: Number(finalScore), feedback };
+    const scoreValue = Number(finalScore);
+
+    if (status === "Approved" && (!finalScore.trim() || scoreValue <= 0)) {
+      Swal.fire({
+        icon: "error",
+        title: "ต้องระบุคะแนนสุดท้าย",
+        text: "กรุณาใส่ Final Score มากกว่า 0 ก่อนส่งสถานะ Approved",
+        timer: 2500,
+        showConfirmButton: false,
+      });
+      return;
+    }
+
+    const reviewData = {
+      status,
+      finalScore: scoreValue,
+      feedback,
+    };
     const currentAssignment = selectedAssignment;
 
     // Close dialog first to avoid Radix focus trap blocking SweetAlert
     setSelectedAssignment(null);
 
     Swal.fire({
-      title: "Are you sure?",
-      text: "You are about to submit the review for this assignment.",
+      title: "ยืนยันการตรวจงาน?",
+      text: feedback.trim() !== ""
+        ? "ระบบจะบันทึกคำแนะนำและสถานะงานตามที่คุณเลือก"
+        : "คุณกำลังจะส่งการตรวจงานโดยไม่ใส่ feedback",
       icon: "question",
       showCancelButton: true,
-      confirmButtonText: "Yes, submit it!",
+      confirmButtonText: "ยืนยัน",
     }).then(async (result) => {
       if (result.isConfirmed) {
         await handleOnReview(reviewData);
@@ -83,178 +101,182 @@ export default function ReviewAssignment({
 
   return (
     <>
-    <Dialog
-      open={!!selectedAssignment}
-      onOpenChange={(open) => {
-        if (!open) {
-          setSelectedAssignment(null);
-        }
-      }}
-    >
-      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Review Assignment</DialogTitle>
-          <DialogDescription>
-            Review the assignment submission, update status, and provide
-            feedback.
-          </DialogDescription>
-        </DialogHeader>
-        {selectedAssignment && (
-          <div className="space-y-6 py-2">
-            <div className="space-y-2">
-              <h3 className="font-semibold text-lg leading-none">
-                Title: {selectedAssignment.title}
-              </h3>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                Description: {selectedAssignment.description}
-              </p>
-              {selectedAssignment.feedback && (
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                  <span className="font-semibold text-destructive">
-                    Feedback:
-                  </span>{" "}
-                  {selectedAssignment.feedback}
-                </p>
-              )}
-            </div>
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CalendarDays className="w-4 h-4" />
-                <span suppressHydrationWarning>
-                  Due{" "}
-                  {new Date(selectedAssignment.deadline).toLocaleDateString()}
-                </span>
-              </div>
-              <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-sm font-medium">
-                <Coins className="w-4 h-4" />
-                Reward: {selectedAssignment.reward}
-              </div>
-            </div>
-
-            {/* Submitted File Preview */}
-            <div className="space-y-3">
-              <Label>Submitted Work</Label>
-              {submissionUrl ? (
-                <div className="relative rounded-md overflow-hidden border group">
-                  {isPdf ? (
-                    <iframe
-                      src={submissionUrl}
-                      className="w-full h-[400px]"
-                      title="PDF Preview"
-                    />
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={submissionUrl}
-                      alt="Preview"
-                      className="w-full max-h-[350px] object-contain bg-muted"
-                    />
-                  )}
-                  {/* Expand button */}
-                  <button
-                    type="button"
-                    onClick={() => isPdf ? window.open(submissionUrl, "_blank") : setFullscreen(true)}
-                    className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-md p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                    title={isPdf ? "Open in new tab" : "View fullscreen"}
-                  >
-                    <Expand className="size-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="p-4 bg-muted text-sm text-muted-foreground rounded-md text-center">
-                  No submission file provided.
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <Dialog
+        open={!!selectedAssignment}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedAssignment(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Review Assignment</DialogTitle>
+            <DialogDescription>
+              Review the assignment submission, update status, and provide
+              feedback.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedAssignment && (
+            <div className="space-y-6 py-2">
               <div className="space-y-2">
-                <Label htmlFor="status" className="font-semibold">
-                  Status
-                </Label>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Pending">Pending</SelectItem>
-                    <SelectItem value="Approved">Approved</SelectItem>
-                    <SelectItem value="Rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
+                <h3 className="font-semibold text-lg leading-none">
+                  Title: {selectedAssignment.title}
+                </h3>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  Description: {selectedAssignment.description}
+                </p>
+                {selectedAssignment.feedback && (
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    <span className="font-semibold text-destructive">
+                      Feedback:
+                    </span>{" "}
+                    {selectedAssignment.feedback}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <CalendarDays className="w-4 h-4" />
+                  <span suppressHydrationWarning>
+                    Due{" "}
+                    {new Date(selectedAssignment.deadline).toLocaleDateString("th-TH", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-sm font-medium">
+                  <Coins className="w-4 h-4" />
+                  Reward: {selectedAssignment.reward}
+                </div>
               </div>
 
-              {status === "Approved" && (
+              {/* Submitted File Preview */}
+              <div className="space-y-3">
+                <Label>Submitted Work</Label>
+                {submissionUrl ? (
+                  <div className="relative rounded-md overflow-hidden border group">
+                    {isPdf ? (
+                      <iframe
+                        src={submissionUrl}
+                        className="w-full h-[400px]"
+                        title="PDF Preview"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={submissionUrl}
+                        alt="Preview"
+                        className="w-full max-h-[350px] object-contain bg-muted"
+                      />
+                    )}
+                    {/* Expand button */}
+                    <button
+                      type="button"
+                      onClick={() => isPdf ? window.open(submissionUrl, "_blank") : setFullscreen(true)}
+                      className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-md p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title={isPdf ? "Open in new tab" : "View fullscreen"}
+                    >
+                      <Expand className="size-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-muted text-sm text-muted-foreground rounded-md text-center">
+                    No submission file provided.
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="finalScore"
-                    className="font-semibold text-primary"
-                  >
-                    Final Score
+                  <Label htmlFor="status" className="font-semibold">
+                    Status
                   </Label>
-                  <Input
-                    id="finalScore"
-                    type="number"
-                    min="0"
-                    value={finalScore}
-                    onChange={(e) => setFinalScore(e.target.value)}
-                    className="border-primary"
-                    placeholder="Enter final score"
-                  />
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Pending">Pending</SelectItem>
+                      <SelectItem value="Approved">Approved</SelectItem>
+                      <SelectItem value="Rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="feedback" className="font-semibold">
-                Feedback
-              </Label>
-              <Textarea
-                id="feedback"
-                placeholder="Write your feedback regarding this submission..."
-                value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
-                rows={4}
-              />
-            </div>
-          </div>
-        )}
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setSelectedAssignment(null)}
-            className="cursor-pointer"
-            disabled={isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            className="cursor-pointer"
-            onClick={handleSubmit}
-            disabled={isPending}
-          >
-            Submit Review
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+                {status === "Approved" && (
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="finalScore"
+                      className="font-semibold text-primary"
+                    >
+                      Final Score
+                    </Label>
+                    <Input
+                      id="finalScore"
+                      type="number"
+                      min="0"
+                      value={finalScore}
+                      onChange={(e) => setFinalScore(e.target.value)}
+                      className="border-primary"
+                      placeholder="Enter final score"
+                    />
+                  </div>
+                )}
+              </div>
 
-    {/* Fullscreen preview dialog */}
-    {submissionUrl && !isPdf && (
-      <Dialog open={fullscreen} onOpenChange={setFullscreen}>
-        <DialogContent className="w-full max-h-[90vh] p-0 flex flex-col rounded-lg">
-          <div className="w-full h-auto rounded-lg flex-1 overflow-auto bg-muted flex items-center justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={submissionUrl}
-              alt="Fullscreen Preview"
-              className="w-full h-full object-contain rounded-lg"
-            />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="feedback" className="font-semibold">
+                  Feedback (บันทึกคำแนะนำผู้เรียนโดยไม่บังคับเปลี่ยนสถานะอัตโนมัติ)
+                </Label>
+                <Textarea
+                  id="feedback"
+                  placeholder="Write your feedback regarding this submission..."
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  rows={4}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setSelectedAssignment(null)}
+              className="cursor-pointer"
+              disabled={isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="cursor-pointer"
+              onClick={handleSubmit}
+              disabled={isPending}
+            >
+              Submit Review
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-    )}
+
+      {/* Fullscreen preview dialog */}
+      {submissionUrl && !isPdf && (
+        <Dialog open={fullscreen} onOpenChange={setFullscreen}>
+          <DialogContent className="w-full max-h-[90vh] p-0 flex flex-col rounded-lg">
+            <div className="w-full h-auto rounded-lg flex-1 overflow-auto bg-muted flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={submissionUrl}
+                alt="Fullscreen Preview"
+                className="w-full h-full object-contain rounded-lg"
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }

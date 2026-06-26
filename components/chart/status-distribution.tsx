@@ -8,10 +8,13 @@ import {
   CardTitle,
 } from "../ui/card";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { StatusDistribution } from "@/types/dashboard";
+import type {
+  StatusDistribution,
+  UserStatusDistribution,
+} from "@/types/dashboard";
 
 interface StatusDistributionChartProps {
-  data: StatusDistribution[];
+  data: Array<StatusDistribution | UserStatusDistribution>;
 }
 
 const STATUS_COLORS: Record<string, string> = {

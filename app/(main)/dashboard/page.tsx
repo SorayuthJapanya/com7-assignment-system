@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useIsSuperAdmin } from "@/hooks/use-current-user";
 import { Filter, X } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 const months = [
   { value: 1, label: "January" },
@@ -36,11 +36,14 @@ const months = [
   { value: 12, label: "December" },
 ];
 
-const currentYear = new Date().getFullYear();
-const years = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
-
 export default function DashboardPage() {
   const { isSuperAdmin, isLoading } = useIsSuperAdmin();
+
+  const [currentYear] = useState(() => new Date().getFullYear());
+  const years = useMemo(
+    () => Array.from({ length: 5 }, (_, i) => currentYear - 2 + i),
+    [currentYear]
+  );
 
   const [year, setYear] = useState<number | null>(null);
   const [month, setMonth] = useState<number | null>(null);
@@ -55,13 +58,15 @@ export default function DashboardPage() {
     <div className="w-full max-w-7xl xl:max-w-360 mx-auto space-y-8">
       <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-2">
         <Header
-          title={isSuperAdmin ? "Overview Dashboard" : "Dashboard"}
-          subTitle={
-            isSuperAdmin
-              ? "Analytics and system overview"
-              : "Your assignment management hub"
-          }
-        />
+  title={isLoading ? "Dashboard" : isSuperAdmin ? "Overview Dashboard" : "Dashboard"}
+  subTitle={
+    isLoading
+      ? "Loading..."
+      : isSuperAdmin
+        ? "Analytics and system overview"
+        : "Your assignment management hub"
+  }
+/>
 
         {/* Filtered */}
         <DropdownMenu>

@@ -31,7 +31,9 @@ export default function KpiCard({ title, value, icon, suffix, color = "default" 
   return (
     <Card className={`group rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-200 active:scale-95 gap-0 ${c.shadow}`}>
       <CardHeader>
-        <CardTitle className="font-medium text-muted-foreground">{title}</CardTitle>
+        <CardTitle className="font-medium text-muted-foreground whitespace-nowrap" style={{ fontSize: "clamp(0.9rem, 1.1vw, 1rem)" }}>
+          {title}
+        </CardTitle>
         <CardAction className={`p-2 rounded-xl transition-colors duration-200 ${c.icon}`}>
           {icon}
         </CardAction>

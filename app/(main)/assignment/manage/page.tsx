@@ -4,16 +4,25 @@ import Header from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { useState } from "react";
-import { IFilteredAssignment } from "@/types/assignment";
-import { useGetAssignments } from "@/hooks/use-assignment";
+import { IFilteredAssignment, IAssignment } from "@/types/assignment"; // 👈 นำเข้า IAssignment เพิ่ม
+import {
+  useGetAssignments,
+  useReviewAssignment,
+  useDeleteAssignment,
+} from "@/hooks/use-assignment";
 import AssignmentFilter from "@/components/table/assignment-filter";
 import Pagination from "@/components/pagination";
 import AssignmentTable from "@/components/assignment-table";
+import EditAssignment from "@/components/dialog/edit-assignment";
 import Link from "next/link";
 import { useIsSuperAdmin } from "@/hooks/use-current-user";
 
 export default function ManageAssignmentPage() {
   const { isSuperAdmin } = useIsSuperAdmin();
+  
+  // State สำหรับควบคุมตัว Pop-up แก้ไขข้อมูล
+  const [selectedAssignment, setSelectedAssignment] = useState<IAssignment | null>(null);
+
   const [filtered, setFiltered] = useState<IFilteredAssignment>({
     search: "",
     type: "all",
@@ -22,10 +31,12 @@ export default function ManageAssignmentPage() {
     limit: 15,
     myAssignments: false,
     username: "",
-    deadlineMonth: "",
+    deadlineMonth: "", 
   });
 
   const { data: assignmentsData, isLoading } = useGetAssignments(filtered);
+  const { mutateAsync: reviewAssignment } = useReviewAssignment();
+  const { mutateAsync: deleteAssignment } = useDeleteAssignment();
 
   const handleFiltered = (
     key: keyof IFilteredAssignment,
@@ -47,10 +58,26 @@ export default function ManageAssignmentPage() {
       limit: filtered.limit,
       myAssignments: false,
       username: "",
-      deadlineMonth: "",
+      deadlineMonth: "", 
     });
   };
-  
+
+  const handleStatusChange = async (id: string, status: string) => {
+    await reviewAssignment({ id, data: { status, feedback: "", finalScore: 0 } });
+  };
+
+  const handleDelete = async (id: string) => {
+    await deleteAssignment({ id });
+  };
+
+  // ฟังก์ชันรองรับการกดแก้ไข: เมื่อกดปุ่มดินสอ จะนำข้อมูล Assignment แถวนั้นมาใส่ใน State เพื่อเปิด Pop-up
+  const handleEdit = (id: string) => {
+    const assignmentToEdit = assignmentsData?.assignments.find((item) => item.id === id);
+    if (assignmentToEdit) {
+      setSelectedAssignment(assignmentToEdit);
+    }
+  };
+
   return (
     <div className="w-full max-w-7xl xl:max-w-360 mx-auto space-y-8">
       <div className="w-full flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-2">
@@ -59,7 +86,6 @@ export default function ManageAssignmentPage() {
           subTitle={"Overview and manage all assignments"}
         />
 
-        {/* Filtered & Action */}
         <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 max-sm:mt-2">
           <AssignmentFilter
             filtered={filtered}
@@ -77,37 +103,38 @@ export default function ManageAssignmentPage() {
         </div>
       </div>
 
-      {/* Assignment List Area */}
       <div className="w-full">
         {isLoading ? (
-          <div className="w-full">
-            <p>Loading...</p>
-          </div>
-        ) : (
+          <p>Loading...</p>
+        ) : assignmentsData?.assignments && assignmentsData.assignments.length > 0 ? (
           <>
-            {assignmentsData?.assignments &&
-            assignmentsData.assignments.length > 0 ? (
-              <>
-                {/* Assignment Table */}
-                <AssignmentTable assignments={assignmentsData.assignments} />
-
-                {/* Pagination logic */}
-                {assignmentsData.pagination &&
-                  assignmentsData.pagination.totalPages > 1 && (
-                    <div className="mt-8">
-                      <Pagination
-                        pagination={assignmentsData.pagination}
-                        onPageChange={(page) => handleFiltered("page", page)}
-                      />
-                    </div>
-                  )}
-              </>
-            ) : (
-              <p className="text-muted-foreground">No assignments found</p>
-            )}
+            {/* 👈 ส่งต่อฟังก์ชัน handleEdit และเปิดปุ่ม Edit กลับมาทำงานตามปกติ */}
+            <AssignmentTable
+              assignments={assignmentsData.assignments}
+              onStatusChange={handleStatusChange}
+              onDelete={handleDelete}
+              onEdit={handleEdit} 
+            />
+            {assignmentsData.pagination &&
+              assignmentsData.pagination.totalPages > 1 && (
+                <div className="mt-8">
+                  <Pagination
+                    pagination={assignmentsData.pagination}
+                    onPageChange={(page) => handleFiltered("page", page)}
+                  />
+                </div>
+              )}
           </>
+        ) : (
+          <p className="text-muted-foreground">No assignments found</p>
         )}
       </div>
+
+      {/* 👈 แทรก Component Pop-up แก้ไขข้อมูลไว้ที่ด้านล่างสุดของหน้าจอ */}
+      <EditAssignment
+        selectedAssignment={selectedAssignment}
+        setSelectedAssignment={setSelectedAssignment}
+      />
     </div>
   );
 }

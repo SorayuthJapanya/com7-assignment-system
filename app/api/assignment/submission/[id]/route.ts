@@ -83,6 +83,7 @@ export async function PUT(
         submissionUrl: uploadResult.url,
         submitAt: new Date(),
         status: "Pending",
+        feedback: "",
       },
     });
 

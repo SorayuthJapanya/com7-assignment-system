@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/input-group";
 import { useGetAssignments, useReviewAssignment } from "@/hooks/use-assignment";
 import { IAssignment, IFilteredAssignment } from "@/types/assignment";
-import { Search } from "lucide-react";
+import { Search, FileX } from "lucide-react";
 import { useRef, useState } from "react";
 import ReviewAssignment from "@/components/dialog/review-assignment";
 import Swal from "sweetalert2";
@@ -19,11 +19,12 @@ export default function ReviewAssignmentPage() {
   const [filtered, setFiltered] = useState<IFilteredAssignment>({
     search: "",
     type: "all",
-    status: "Pending",
+    status: "Pending", // ยังคงสถานะเริ่มต้นไว้ดึงข้อมูลตาม logic เดิม
     page: 1,
     limit: 15,
     myAssignments: false,
   });
+
   const [selectedAssignment, setSelectedAssignment] =
     useState<IAssignment | null>(null);
   const selectedAssignmentRef = useRef<IAssignment | null>(null);
@@ -33,12 +34,14 @@ export default function ReviewAssignmentPage() {
 
   const handleFiltered = (
     key: keyof IFilteredAssignment,
-    value: string | number | boolean,
+    value: string | number | boolean
   ) => {
-    setFiltered({
-      ...filtered,
+    const resetPage = key !== "page";
+    setFiltered((prev) => ({
+      ...prev,
       [key]: value,
-    });
+      ...(resetPage ? { page: 1 } : {}),
+    }));
   };
 
   const handleSelectAssignment = (assignment: IAssignment | null) => {
@@ -59,78 +62,84 @@ export default function ReviewAssignmentPage() {
       title: "Updating...",
       text: "Please wait",
       allowOutsideClick: false,
-      didOpen: () => {
-        Swal.showLoading();
-      },
+      didOpen: () => Swal.showLoading(),
     });
-    await reviewAssignment({
-      id: assignment.id,
-      data,
-    });
+    await reviewAssignment({ id: assignment.id, data });
   };
 
-  return (
-    <div className="w-full max-w-7xl xl:max-w-360 mx-auto space-y-8">
-      <div className="w-full flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-2">
-        <Header
-          title={"Review Assignment"}
-          subTitle={"Review & Approve Assignments"}
-        />
+  // ดึงรายการงานตามเงื่อนไขค้นหา เรียงลำดับพื้นฐานตาม deadline
+  const displayedAssignments = (() => {
+    let list = [...(assignmentsData?.assignments ?? [])];
 
-        <div className="flex items-center justify-center sm:justify-end gap-2">
-          {/* Search */}
-          <InputGroup>
-            <InputGroupInput
-              placeholder="Search..."
-              value={filtered.search}
-              onChange={(e) => handleFiltered("search", e.target.value)}
-            />
-            <InputGroupAddon>
-              <Search />
-            </InputGroupAddon>
-            <InputGroupAddon align={"inline-end"}>
-              <p className="text-xs font-normal text-muted-foreground">
-                {assignmentsData?.assignments.length} assignment
-                {assignmentsData?.assignments.length !== 1 ? "s" : ""}
-              </p>
-            </InputGroupAddon>
-          </InputGroup>
-        </div>
+    list = list.filter((assignment) => assignment.status === "Pending");
+
+    list.sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
+
+    return list;
+  })();
+
+  return (
+    <div className="w-full max-w-7xl xl:max-w-360 mx-auto space-y-5">
+
+      {/* Top bar: title left, search right */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <Header
+          title="Review Assignment"
+          subTitle="Review & Approve Assignments"
+        />
+        <InputGroup className="w-full sm:w-72">
+          <InputGroupAddon>
+            <Search className="w-4 h-4" />
+          </InputGroupAddon>
+          <InputGroupInput
+            placeholder="ค้นหาชื่องาน หรือชื่อผู้รับ"
+            value={filtered.search}
+            onChange={(e) => handleFiltered("search", e.target.value)}
+          />
+          <InputGroupAddon align="inline-end">
+            <p className="text-xs text-muted-foreground whitespace-nowrap">
+              {displayedAssignments.length} assignment
+              {displayedAssignments.length !== 1 ? "s" : ""}
+            </p>
+          </InputGroupAddon>
+        </InputGroup>
       </div>
 
+      {/* Cards grid */}
       {isLoading ? (
-        <div className="w-full">
-          <p>Loading...</p>
+        <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
+          Loading...
+        </div>
+      ) : displayedAssignments.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
+          <FileX className="w-8 h-8 opacity-40" />
+          <p className="text-sm">ไม่พบ assignment</p>
         </div>
       ) : (
-        <>
-          <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {assignmentsData?.assignments?.length === 0 ? (
-              <div className="w-full flex items-center justify-start">
-                <p className="text-muted-foreground">No assignments found</p>
-              </div>
-            ) : (
-              assignmentsData?.assignments?.map((assignment) => (
-                <AssignmentCard
-                  key={assignment.id}
-                  assignment={assignment}
-                  onSelected={handleSelectAssignment}
-                />
-              ))
-            )}
-          </div>
-          {assignmentsData?.pagination &&
-            assignmentsData.pagination.totalPages > 1 && (
-              <div className="mt-8">
-                <Pagination
-                  pagination={assignmentsData.pagination}
-                  onPageChange={(page) => handleFiltered("page", page)}
-                />
-              </div>
-            )}
-        </>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {displayedAssignments.map((assignment) => (
+            <AssignmentCard
+              key={assignment.id}
+              assignment={assignment}
+              onSelected={handleSelectAssignment}
+              reviewMode
+            />
+          ))}
+        </div>
       )}
 
+      {/* Pagination */}
+      {assignmentsData?.pagination &&
+        assignmentsData.pagination.totalPages > 1 && (
+          <div className="mt-6">
+            <Pagination
+              pagination={assignmentsData.pagination}
+              onPageChange={(page) => handleFiltered("page", page)}
+            />
+          </div>
+        )}
+
+      {/* Review dialog */}
       <ReviewAssignment
         selectedAssignment={selectedAssignment}
         setSelectedAssignment={handleSelectAssignment}

@@ -32,6 +32,8 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
     const username = searchParams.get("username") || "";
     const deadlineMonth = searchParams.get("deadlineMonth") || "";
+    const deadlineFrom = searchParams.get("deadlineFrom") || "";
+    const deadlineTo = searchParams.get("deadlineTo") || "";
 
     // Build where clause
     const where: Record<string, unknown> = {};
@@ -68,10 +70,27 @@ export async function GET(request: NextRequest) {
     // Add status filter
     if (status !== "all") {
       if (status === "not-submit") {
-        where.submissionUrl = "";
+        const notSubmitOr = [
+          { submissionUrl: "" },
+          {
+            feedback: { not: "" },
+            status: { not: "Approved" },
+          },
+        ];
+
+        if (where.OR) {
+          where.AND = [
+            { OR: where.OR as unknown[] },
+            { OR: notSubmitOr },
+          ];
+          delete where.OR;
+        } else {
+          where.OR = notSubmitOr;
+        }
       } else if (status === "Pending") {
         where.submissionUrl = { not: "" };
         where.status = "Pending";
+        where.feedback = "";
       } else {
         where.status = status;
       }
@@ -95,6 +114,20 @@ export async function GET(request: NextRequest) {
         gte: new Date(year, month - 1, 1),
         lt: new Date(year, month, 1),
       };
+    }
+
+    // Deadline range filter
+    if (deadlineFrom || deadlineTo) {
+      const deadlineFilter: Record<string, unknown> = {};
+      if (deadlineFrom) {
+        deadlineFilter.gte = new Date(deadlineFrom);
+      }
+      if (deadlineTo) {
+        const toDate = new Date(deadlineTo);
+        toDate.setHours(23, 59, 59, 999);
+        deadlineFilter.lte = toDate;
+      }
+      where.deadline = deadlineFilter;
     }
 
     // Get total count for pagination

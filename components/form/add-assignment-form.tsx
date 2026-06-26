@@ -68,6 +68,8 @@ export default function AddAssignmentForm({
   const descriptionPresets = useLocalPresets("description", authUser?.id);
   const router = useRouter();
 
+  const currentYear = new Date().getFullYear(); // 🎯 คำนวณปีปัจจุบัน (ค.ศ.)
+
   const { mutateAsync: createAssignment } = useCreateAssignment();
 
   // Pre-fill values when navigated from Rebuild
@@ -285,6 +287,8 @@ export default function AddAssignmentForm({
                                 : undefined
                             }
                             captionLayout="dropdown"
+                            fromYear={currentYear - 5} // ย้อนหลังได้ 5 ปีจากปีปัจจุบัน
+                            toYear={currentYear + 2}   //  เพิ่มตัวเลือกให้เลือกไปข้างหน้าได้อีก 2 ปีจากปีปัจจุบัน
                             defaultMonth={
                               field.value && !isNaN(field.value.getTime())
                                 ? field.value
@@ -343,7 +347,7 @@ export default function AddAssignmentForm({
                               return (
                                 <div
                                   key={val}
-                                  className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-0.5 rounded-sm text-xs font-medium border-[0.5px] border-primary/50"
+                                  className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-[2px] rounded-sm text-xs font-medium border-[0.5px] border-primary/50"
                                 >
                                   {selectedUser || val}
                                   <div

@@ -30,11 +30,36 @@ export const useGetAssignments = ({
   type,
   username,
   deadlineMonth,
+  deadlineFrom,
+  deadlineTo,
 }: IFilteredAssignment) => {
   return useQuery<GetAssignmentsResponse>({
-    queryKey: ["assignment", search, limit, myAssignments, page, status, type, username, deadlineMonth],
+    queryKey: [
+      "assignment",
+      search,
+      limit,
+      myAssignments,
+      page,
+      status,
+      type,
+      username,
+      deadlineMonth,
+      deadlineFrom,
+      deadlineTo,
+    ],
     queryFn: () =>
-      getAssignments({ search, limit, myAssignments, page, status, type, username, deadlineMonth }),
+      getAssignments({
+        search,
+        limit,
+        myAssignments,
+        page,
+        status,
+        type,
+        username,
+        deadlineMonth,
+        deadlineFrom,
+        deadlineTo,
+      }),
   });
 };
 
@@ -125,6 +150,7 @@ export const useReviewAssignment = () => {
     onSuccess: (res) => {
       queryClient.invalidateQueries({
         queryKey: ["assignment"],
+        exact: false,
       });
       Swal.fire({
         icon: "success",

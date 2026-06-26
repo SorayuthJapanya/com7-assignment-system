@@ -9,6 +9,8 @@ export interface IFilteredAssignment {
   type?: "Individual" | "Group" | "all";
   username?: string;
   deadlineMonth?: string;
+  deadlineFrom?: string;
+  deadlineTo?: string;
 }
 
 export interface IAssignment {

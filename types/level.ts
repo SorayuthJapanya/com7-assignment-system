@@ -43,3 +43,28 @@ export interface LeaderboardResponse {
   leaderboard: LeaderboardEntry[];
   period?: { year: number; month: number } | null;
 }
+
+
+// ============================================================
+// เพิ่มเข้าไปใน types/level.ts ที่มีอยู่ (ต่อท้ายไฟล์)
+// ============================================================
+
+export interface RedeemStatus {
+  totalScore: number;
+  overdueSeconds: number;
+  maxRedeemableMinutes: number;
+  secondsPerMinute: number;
+  remainingOverdueSeconds: number;
+}
+
+export interface RedeemOverdueRequest {
+  minutesToRedeem: number;
+}
+
+export interface RedeemOverdueResponse {
+  success: boolean;
+  minutesUsed: number;
+  secondsReduced: number;
+  remainingScore: number;
+  remainingOverdueSeconds: number;
+}
