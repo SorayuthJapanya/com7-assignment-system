@@ -55,10 +55,13 @@ export const getAssignment = async (
 
 export const submissionAssignment = async (
   id: string,
-  file: File,
+  file: File | null,
 ): Promise<SubmissionAssignmentResponse> => {
   const formData = new FormData();
-  formData.append("file", file);
+
+  if (file) {
+    formData.append("file", file);
+  }
 
   const response = await axiosInstance.put(
     `/api/assignment/submission/${id}`,

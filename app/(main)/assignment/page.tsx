@@ -138,32 +138,32 @@ export default function MyAssignmentPage() {
   };
 
   const handleOnSubmit = async () => {
-    if (!selectedAssignment || !file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      Swal.fire({
-        icon: "error",
-        title: "File size too large",
-        text: "File size must be less than 2MB",
-        timer: 2000,
-        showConfirmButton: false,
-      });
-      return;
-    }
+  if (!selectedAssignment) return;
+  if (file && file.size > 2 * 1024 * 1024) {
     Swal.fire({
-      title: "Submitting...",
-      text: "Please wait while we upload your assignment.",
-      allowOutsideClick: false,
-      didOpen: () => Swal.showLoading(),
+      icon: "error",
+      title: "File size too large",
+      text: "File size must be less than 2MB",
+      timer: 2000,
+      showConfirmButton: false,
     });
-    try {
-      await submitAssignment({ id: selectedAssignment.id, file });
-      setSelectedAssignment(null);
-      setFile(null);
-      setPreview(null);
-    } catch {
-      // Error handled by hook
-    }
-  };
+    return;
+  }
+  Swal.fire({
+    title: "Submitting...",
+    text: "Please wait while we upload your assignment.",
+    allowOutsideClick: false,
+    didOpen: () => Swal.showLoading(),
+  });
+  try {
+    await submitAssignment({ id: selectedAssignment.id, file });
+    setSelectedAssignment(null);
+    setFile(null);
+    setPreview(null);
+  } catch {
+    // Error handled by hook
+  }
+};
 
   const handleFiltered = (
     key: keyof IFilteredAssignment,

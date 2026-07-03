@@ -37,7 +37,6 @@ export const useLogin = () => {
         timer: 2000,
       });
     },
-
     onError: (error) => {
       Swal.fire({
         icon: "error",
@@ -57,7 +56,7 @@ export const useRegister = () => {
   >({
     mutationFn: register,
     onSuccess: async (res) => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      await queryClient.invalidateQueries({ queryKey: ["users"], exact: false });
       await Swal.fire({
         icon: "success",
         title: res.message || "Registration Successful",
@@ -65,7 +64,6 @@ export const useRegister = () => {
         timer: 2000,
       });
     },
-
     onError: (error) => {
       Swal.fire({
         icon: "error",
@@ -90,7 +88,6 @@ export const useLogout = () => {
           showConfirmButton: false,
         });
       },
-
       onError: (error) => {
         Swal.fire({
           icon: "error",
@@ -113,7 +110,7 @@ export const useAddUser = () => {
   >({
     mutationFn: addUser,
     onSuccess: async (res) => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      await queryClient.invalidateQueries({ queryKey: ["users"], exact: false });
       await Swal.fire({
         icon: "success",
         title: res.message || "Add User Successful",
@@ -122,7 +119,6 @@ export const useAddUser = () => {
         showConfirmButton: false,
       });
     },
-
     onError: (error) => {
       Swal.fire({
         icon: "error",
@@ -150,8 +146,10 @@ export const useUpdateUser = () => {
     { id: string; data: UpdateRequest }
   >({
     mutationFn: ({ id, data }) => updateUser(id, data),
-    onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+    onSuccess: async (res) => {
+      // บังคับรีดึงข้อมูลย่อยทั้งหมดที่ผูกกับคำว่า "users" และรอให้ดึงเสร็จก่อนวิ่งไปขั้นตอนถัดไป
+      await queryClient.invalidateQueries({ queryKey: ["users"], exact: false });
+
       Swal.fire({
         icon: "success",
         title: res.message || "User updated successfully",
@@ -160,7 +158,6 @@ export const useUpdateUser = () => {
         showConfirmButton: false,
       });
     },
-
     onError: (error) => {
       Swal.fire({
         icon: "error",
@@ -189,8 +186,8 @@ export const useDeleteUser = () => {
     { id: string }
   >({
     mutationFn: ({ id }) => deleteUser(id),
-    onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+    onSuccess: async (res) => {
+      await queryClient.invalidateQueries({ queryKey: ["users"], exact: false });
       Swal.fire({
         icon: "success",
         title: res.message || "User deleted successfully",
@@ -199,7 +196,6 @@ export const useDeleteUser = () => {
         showConfirmButton: false,
       });
     },
-
     onError: (error) => {
       Swal.fire({
         icon: "error",

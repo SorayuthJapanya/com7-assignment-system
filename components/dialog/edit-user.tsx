@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,17 +19,11 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useUpdateUser } from "@/hooks/use-auth";
+import { useUpdateUser } from "@/hooks/use-auth"; 
 import Swal from "sweetalert2";
-import { IUser } from "@/types/auth";
+import { IUser } from "@/types/auth"; 
 
 interface EditUserDialogProps {
   open: boolean;
@@ -36,10 +32,11 @@ interface EditUserDialogProps {
 }
 
 const editUserSchema = z.object({
-  role: z.enum(["STAFF", "ADMIN", "SUPER_ADMIN"], {
-    required_error: "Role is required",
-  }),
+  username: z.string().min(1, "Username is required"),
+  nickname: z.string().min(1, "Nickname is required"),
 });
+
+type EditUserForm = z.infer<typeof editUserSchema>;
 
 export default function EditUserDialog({
   open,
@@ -48,22 +45,24 @@ export default function EditUserDialog({
 }: EditUserDialogProps) {
   const { mutateAsync: updateUser, isPending } = useUpdateUser();
 
-  const form = useForm<z.infer<typeof editUserSchema>>({
+  const form = useForm<EditUserForm>({
     resolver: zodResolver(editUserSchema),
     defaultValues: {
-      role: "STAFF",
+      username: "",
+      nickname: "",
     },
   });
 
   useEffect(() => {
-    if (user && open) {
+    if (user) {
       form.reset({
-        role: (user.role as "STAFF" | "ADMIN" | "SUPER_ADMIN") || "STAFF",
+        username: user.username ?? "",
+        nickname: user.nickname ?? "",
       });
     }
-  }, [user, open, form]);
+  }, [user, form]);
 
-  const onSubmit = async (data: z.infer<typeof editUserSchema>) => {
+  const onSubmit = async (data: EditUserForm) => {
     if (!user) return;
 
     Swal.fire({
@@ -75,11 +74,18 @@ export default function EditUserDialog({
       },
     });
 
-    await updateUser({
-      id: user.id,
-      data: { role: data.role },
-    });
-    onClose();
+    try {
+      await updateUser({
+        id: user.id,
+        data: { username: data.username, nickname: data.nickname },
+      });
+      
+      // ปิดหน้าต่างหลังจากทำการอัปเดตและดึงข้อมูลใหม่มาลงแคชเรียบร้อยแล้ว
+      onClose();
+    } catch (error) {
+      console.error(error);
+      Swal.close();
+    }
   };
 
   return (
@@ -91,11 +97,11 @@ export default function EditUserDialog({
     >
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Edit User</DialogTitle>
+          <DialogTitle>Edit User Profile</DialogTitle>
           <DialogDescription>
-            Change the role for{" "}
+            Editing profile for{" "}
             <span className="font-medium text-foreground">
-              {user?.nickname || user?.username}
+              {user?.username}
             </span>
             .
           </DialogDescription>
@@ -108,22 +114,27 @@ export default function EditUserDialog({
           >
             <FormField
               control={form.control}
-              name="role"
+              name="username"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Role</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a role" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="STAFF">Staff</SelectItem>
-                      <SelectItem value="ADMIN">Admin</SelectItem>
-                      <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <FormLabel>Username</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Enter username" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="nickname"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nickname</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Enter nickname" {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

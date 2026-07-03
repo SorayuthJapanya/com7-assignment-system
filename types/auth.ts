@@ -38,6 +38,7 @@ export interface UpdateRequest {
   email?: string;
   role?: string;
   profileImage?: string;
+  username?: string;
 }
 
 export interface UpdateResponse {

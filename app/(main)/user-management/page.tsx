@@ -17,7 +17,9 @@ export default function UserManagementPage() {
   const [search, setSearch] = useState<string>("");
   const [onAddUser, setOnAddUser] = useState<boolean>(false);
 
-  const { data: users, isLoading } = useGetUsers({ search });
+  // ดึงข้อมูลตรงนี้เพื่อนำเอาจำนวน (length) มาแสดงผลที่ป้ายนับจำนวนผู้ใช้ในช่องค้นหา
+  const { data: users } = useGetUsers({ search });
+
   return (
     <div className="w-full max-w-7xl xl:max-w-360 mx-auto space-y-8">
       <div className="w-full flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-2">
@@ -40,7 +42,7 @@ export default function UserManagementPage() {
             </InputGroupAddon>
             <InputGroupAddon align={"inline-end"}>
               <p className="text-xs font-normal text-muted-foreground">
-                {users?.data.length} user{users?.data.length !== 1 ? "s" : ""}
+                {users?.data.length ?? 0} user{(users?.data.length !== 1) ? "s" : ""}
               </p>
             </InputGroupAddon>
           </InputGroup>
@@ -51,13 +53,8 @@ export default function UserManagementPage() {
         </div>
       </div>
 
-      {isLoading ? (
-        <p>Loading...</p>
-      ) : users?.data.length === 0 ? (
-        <p className="text-muted-foreground">No users found</p>
-      ) : (
-        <UserTable data={users?.data} />
-      )}
+    
+      <UserTable search={search} />
 
       <AddUserDialog open={onAddUser} onOpenChange={setOnAddUser} />
     </div>

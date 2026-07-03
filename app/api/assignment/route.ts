@@ -88,9 +88,12 @@ export async function GET(request: NextRequest) {
           where.OR = notSubmitOr;
         }
       } else if (status === "Pending") {
-        where.submissionUrl = { not: "" };
         where.status = "Pending";
         where.feedback = "";
+        where.AND = [
+          ...(where.AND as any[] || []),
+          { submitAt: { gt: prisma.assignment.fields.createdAt } }
+        ]; // ต้องเคยกดส่งงานแล้วจริง (ไม่ว่าจะมีไฟล์หรือไม่)
       } else {
         where.status = status;
       }

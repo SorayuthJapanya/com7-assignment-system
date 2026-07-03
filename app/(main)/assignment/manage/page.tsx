@@ -130,7 +130,7 @@ export default function ManageAssignmentPage() {
         )}
       </div>
 
-      {/* 👈 แทรก Component Pop-up แก้ไขข้อมูลไว้ที่ด้านล่างสุดของหน้าจอ */}
+      {/*  แทรก Component Pop-up แก้ไขข้อมูลไว้ที่ด้านล่างสุดของหน้าจอ */}
       <EditAssignment
         selectedAssignment={selectedAssignment}
         setSelectedAssignment={setSelectedAssignment}

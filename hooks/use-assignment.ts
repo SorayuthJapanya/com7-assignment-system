@@ -20,7 +20,6 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
-
 export const useGetAssignments = ({
   search,
   limit,
@@ -174,21 +173,14 @@ export const useReviewAssignment = () => {
 
 export const useSubmissionAssignment = () => {
   const queryClient = useQueryClient();
-  return useMutation<
-    {
-      message: string;
-    },
+  return useMutation  <
+    { message: string },
     AxiosError<AxiosErrorResponse>,
-    {
-      id: string;
-      file: File;
-    }
+    { id: string; file: File | null }
   >({
     mutationFn: ({ id, file }) => submissionAssignment(id, file),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({
-        queryKey: ["assignment"],
-      });
+      queryClient.invalidateQueries({ queryKey: ["assignment"] });
       Swal.fire({
         icon: "success",
         title: res.message || "Assignment submitted successfully",

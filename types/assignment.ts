@@ -31,6 +31,7 @@ export interface IAssignment {
   status: "Pending" | "Approved" | "Rejected";
   createdAt: Date;
   updatedAt: Date;
+  username: string;
 }
 
 export interface GetAssignmentsResponse {
@@ -62,6 +63,7 @@ export interface UpdateAssignmentRequest {
   description?: string;
   reward?: number;
   deadline?: Date;
+  username?: string;
 }
 
 export interface SubmissionAssignmentResponse {

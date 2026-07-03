@@ -24,12 +24,16 @@ export default function AssignmentCard({
   reviewMode = false,
 }: AssignmentCardProps) {
   const feedbackPresent = !!assignment.feedback;
-  const hasSubmission = !!assignment.submissionUrl && assignment.submissionUrl.trim() !== "";
+  const isSubmitted = assignment.submitAt > assignment.createdAt;
+
+  const hasSubmission =
+    (!!assignment.submissionUrl && assignment.submissionUrl.trim() !== "") ||
+    isSubmitted;
+
   const shouldTreatAsNotSubmit =
     !hasSubmission || (studentMode && feedbackPresent && assignment.status !== "Approved");
   const resultStatus = shouldTreatAsNotSubmit ? "Not Submit" : assignment.status;
 
-  const isSubmitted = assignment.submitAt > assignment.createdAt;
   const isLate = isSubmitted && assignment.submitAt > assignment.deadline;
 
   // 1. ดักจับการเปลี่ยนแปลงข้อมูลจากหน้า Manage Assignment (เปรียบเทียบค่าเดิมกับค่าปัจจุบัน)
@@ -47,7 +51,7 @@ export default function AssignmentCard({
   // ตรวจสอบ Flag รวมว่ามีการแก้ไขจากหน้า Manage หรือไม่
   const isDataChanged = isDeadlineChanged || isTitleChanged || isDescriptionChanged || isRewardChanged || (assignment as any).isUpdated;
 
-  // 🔴 เครื่องหมายตกใจจะขึ้นเตือนเมื่อ: ถูก Rejected, มี Feedback หรือมีการแก้ไขข้อมูลใดๆ จากหน้า Manage
+  // ครื่องหมายตกใจจะขึ้นเตือนเมื่อ: ถูก Rejected, มี Feedback หรือมีการแก้ไขข้อมูลใดๆ จากหน้า Manage
   // และจะซ่อนอัตโนมัติเมื่อนักศึกษากดส่งงานรอบใหม่ (สถานะกลับไปเป็น Pending หรือ Approved)
   const hasAlert = 
     (resultStatus as string) !== "Pending" && 
@@ -104,20 +108,16 @@ export default function AssignmentCard({
   const showAlertBox = hasAlert && !(isNotSubmit && feedbackPresent);
 
   const getStatusStyle = (status: string) => {
-    if (reviewMode && status === "Pending") {
-      return "bg-amber-100 text-amber-800";
-    }
-    if (isDeadlineOverdue && status === "Pending") {
-      return "bg-red-100 text-red-800 border border-red-200";
-    }
-    switch (status) {
-      case "Not Submit": return "bg-amber-100 text-amber-900 border border-amber-200";
-      case "Pending": return "bg-amber-100 text-amber-800";
-      case "Approved": return "bg-emerald-100 text-emerald-800";
-      case "Rejected": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-700";
-    }
-  };
+  if (status === "Pending") {
+    return "bg-amber-100 text-amber-800"; 
+  }
+  switch (status) {
+    case "Not Submit": return "bg-amber-100 text-amber-900 border border-amber-200";
+    case "Approved": return "bg-emerald-100 text-emerald-800";
+    case "Rejected": return "bg-red-100 text-red-800";
+    default: return "bg-gray-100 text-gray-700";
+  }
+};
 
   const StatusBadge = () => {
     const badge = (

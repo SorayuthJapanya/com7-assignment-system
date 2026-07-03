@@ -9,15 +9,13 @@ import {
 } from "../ui/dialog";
 import { IAssignment } from "@/types/assignment";
 import { Button } from "../ui/button";
-import { CalendarDays, Coins, Expand, X } from "lucide-react";
+import { CalendarDays, Coins, Expand } from "lucide-react";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 
 interface SubmitAssignmentProps {
   selectedAssignment: IAssignment | null;
-  setSelectedAssignment: React.Dispatch<
-    React.SetStateAction<IAssignment | null>
-  >;
+  setSelectedAssignment: React.Dispatch<React.SetStateAction<IAssignment | null>>;
   file: File | null;
   setFile: React.Dispatch<React.SetStateAction<File | null>>;
   preview: string | null;
@@ -40,21 +38,43 @@ export default function SubmitAssignment({
 }: SubmitAssignmentProps) {
   const isApproved = selectedAssignment?.status === "Approved";
   const [fullscreen, setFullscreen] = useState(false);
+  const [confirmNoFileOpen, setConfirmNoFileOpen] = useState(false);
 
   const previewSrc = (preview && file) ? preview : selectedAssignment?.submissionUrl || null;
   const isPdf = (preview && file)
     ? file.type === "application/pdf"
     : selectedAssignment?.submissionUrl?.toLowerCase().endsWith(".pdf") ?? false;
 
+  const closeMainDialog = () => {
+    setSelectedAssignment(null);
+    setFile(null);
+    setPreview(null);
+  };
+
+  const handleSubmitClick = () => {
+    if (!file) {
+      setConfirmNoFileOpen(true);
+      return;
+    }
+    handleOnSubmit();
+  };
+
+  const handleConfirmSubmitWithoutFile = () => {
+    // ปิด popup ยืนยันก่อน แต่ "ห้าม" แตะ state ของ Dialog หลัก
+    setConfirmNoFileOpen(false);
+    // เรียกส่งจริง — selectedAssignment / file ยังอยู่ครบตอนนี้
+    handleOnSubmit();
+  };
+
   return (
     <>
       <Dialog
         open={!!selectedAssignment}
         onOpenChange={(open) => {
+          // กันไม่ให้ Dialog หลักปิดตัวเองตอน popup ยืนยันกำลังเปิดอยู่
+          if (confirmNoFileOpen) return;
           if (!open) {
-            setSelectedAssignment(null);
-            setFile(null);
-            setPreview(null);
+            closeMainDialog();
           }
         }}
       >
@@ -124,7 +144,6 @@ export default function SubmitAssignment({
                       className="w-full max-h-[250px] object-contain bg-muted"
                     />
                   )}
-                  {/* Expand button */}
                   <button
                     type="button"
                     onClick={() => isPdf && previewSrc ? window.open(previewSrc, "_blank") : setFullscreen(true)}
@@ -167,11 +186,7 @@ export default function SubmitAssignment({
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => {
-                setSelectedAssignment(null);
-                setFile(null);
-                setPreview(null);
-              }}
+              onClick={closeMainDialog}
               className="cursor-pointer"
               disabled={isPending}
             >
@@ -181,13 +196,43 @@ export default function SubmitAssignment({
               <Button
                 type="button"
                 className="cursor-pointer"
-                onClick={handleOnSubmit}
-                disabled={!file || isPending}
+                onClick={handleSubmitClick}
+                disabled={isPending}
               >
                 Submit
               </Button>
             )}
           </DialogFooter>
+
+          {/* Confirm popup: ยังไม่ได้แนบไฟล์ — nest ไว้ข้างใน Dialog หลัก */}
+          <Dialog open={confirmNoFileOpen} onOpenChange={setConfirmNoFileOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>ยังไม่ได้แนบไฟล์</DialogTitle>
+                <DialogDescription>
+                  คุณยังไม่ได้แนบไฟล์งาน ยืนยันที่จะส่งโดยไม่มีไฟล์แนบใช่หรือไม่?
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmNoFileOpen(false)}
+                  className="cursor-pointer"
+                  disabled={isPending}
+                >
+                  ยกเลิก
+                </Button>
+                <Button
+                  type="button"
+                  className="cursor-pointer"
+                  onClick={handleConfirmSubmitWithoutFile}
+                  disabled={isPending}
+                >
+                  ยืนยันส่ง
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </DialogContent>
       </Dialog>
 

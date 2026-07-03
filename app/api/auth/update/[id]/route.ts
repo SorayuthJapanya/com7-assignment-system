@@ -21,12 +21,16 @@ export async function PUT(
 
     // Get request body
     const body = await request.json();
-    const { nickname, email, role, profileImage } = body;
+    // 💡 1. ดึง username ออกมารับค่าจากหน้าบ้านเพิ่มตรงนี้
+    const { username, nickname, email, role, profileImage } = body;
 
     // Validate input
-    if (!nickname && !email && !role && !profileImage) {
+    // 💡 2. เพิ่ม username เข้าไปในเงื่อนไขตรวจสอบ Validation
+    if (!username && !nickname && !email && !role && !profileImage) {
       return NextResponse.json(
-        { error: "At least one field (nickname, email, role, or profileImage) must be provided" },
+        {
+          error: "At least one field (username, nickname, email, role, or profileImage) must be provided",
+        },
         { status: 400 },
       );
     }
@@ -39,10 +43,12 @@ export async function PUT(
       );
     }
 
+    const targetUserId = (await params).id;
+
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
-      where: { id: (await params).id },
-      select: { id: true, email: true, role: true },
+      where: { id: targetUserId },
+      select: { id: true, email: true, role: true, username: true },
     });
 
     if (!existingUser) {
@@ -57,10 +63,25 @@ export async function PUT(
       );
     }
 
+    // 💡 3. ตรวจสอบเงื่อนไขหากมีการเปลี่ยน Username ว่าซ้ำกับคนอื่นในระบบไหม
+    if (username && username !== existingUser.username) {
+      const usernameExists = await prisma.user.findUnique({
+        where: { username },
+      });
+      if (usernameExists) {
+        return NextResponse.json(
+          { error: "Username is already taken" },
+          { status: 400 },
+        );
+      }
+    }
+
     // Update user
     const updatedUser = await prisma.user.update({
-      where: { id: (await params).id },
+      where: { id: targetUserId },
       data: {
+        // 💡 4. เพิ่มคำสั่งบันทึกฟิลด์ username ลงฐานข้อมูล
+        ...(username && { username }),
         ...(nickname && { nickname }),
         ...(email && { email }),
         ...(role && { role: role as "SUPER_ADMIN" | "STAFF" }),
