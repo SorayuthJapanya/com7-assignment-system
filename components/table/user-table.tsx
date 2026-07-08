@@ -123,7 +123,9 @@ export default function UserTable({ search = "" }: UserTableProps) {
                         ? "bg-purple-100 text-purple-800"
                         : user.role === "ADMIN"
                           ? "bg-blue-100 text-blue-800"
-                          : "bg-gray-100 text-gray-800"
+                          : user.role === "INTERNSHIP"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-gray-100 text-gray-800"
                     }`}
                   >
                     {user.role}
