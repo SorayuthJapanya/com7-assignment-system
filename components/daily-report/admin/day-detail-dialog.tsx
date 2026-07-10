@@ -58,15 +58,13 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
   const { mutate: review, isPending } = useReviewDailyReport();
   const currentUser = useAuthUser();
 
-  // ไม่ใช้ Dialog ซ้อน Dialog แล้ว — ใช้ state นี้สลับ "มุมมอง" ภายใน Dialog เดียวแทน
   // null = แสดงหน้ารายการ, มีค่า = แสดงหน้ารายละเอียด
   const [selectedReport, setSelectedReport] = useState<ReportPreview | null>(null);
 
-  // เก็บผลของการตรวจล่าสุดไว้ที่ฝั่ง client ด้วย (key = reportId)
-  // เพื่อให้ "ตรวจโดย" ยังโชว์ค้างอยู่ทั้งในหน้ารายการและหน้ารายละเอียด ทันทีที่กดตรวจ
+  // เก็บผลของการตรวจล่าสุดไว้ที่ฝั่ง client ด้วย
   const [reviewOverrides, setReviewOverrides] = useState<
     Record<string, { status: string; reviewedBy: string }>
-  >({});
+  >( {});
 
   // ใช้ username ของ user ที่ login อยู่ตอนนี้ ส่งไปเป็นผู้ตรวจโดยตรง
   const handleToggleApprove = (reportId: string, currentStatus: string) => {
@@ -91,7 +89,6 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
       },
       {
         onSuccess: () => {
-          // รอให้ข้อความ "Updated" (timer 1200ms ใน useReviewDailyReport) แสดงเสร็จก่อน แล้วค่อยกลับไปหน้ารายการ
           setTimeout(() => {
             setSelectedReport((prev) => (prev?.reportId === reportId ? null : prev));
           }, 1200);
@@ -100,7 +97,7 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
     );
   };
 
-  // รวมค่าจาก server กับค่าที่เพิ่งตรวจไปด้วย local override (override ชนะเสมอถ้ามี)
+  // รวมค่าจาก server กับค่าที่เพิ่งตรวจไปด้วย local override
   const getEffectiveReport = (reportId: string, status?: string, reviewedBy?: string | null) => {
     const override = reviewOverrides[reportId];
     return {
@@ -206,7 +203,8 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
                           )}
                         </button>
 
-                        {displayReviewedBy(effective?.reviewedBy) && (
+                        
+                        {effective?.status !== "Pending" && displayReviewedBy(effective?.reviewedBy) && (
                           <p className="text-[11px] text-muted-foreground">
                             ตรวจโดย: {displayReviewedBy(effective?.reviewedBy)}
                           </p>
@@ -220,7 +218,7 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
           </>
         ) : (
           <>
-            {/* ===== หน้ารายละเอียด (สลับมาแทนที่หน้ารายการ ไม่ได้เปิด Dialog ซ้อน) ===== */}
+            {/* ===== หน้ารายละเอียด ===== */}
             <DialogHeader>
               <button
                 type="button"
@@ -261,7 +259,8 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
                 {selectedReport.description}
               </p>
 
-              {displayReviewedBy(selectedReport.reviewedBy) && (
+              
+              {selectedReport.status !== "Pending" && displayReviewedBy(selectedReport.reviewedBy) && (
                 <p className="text-[11px] text-muted-foreground">
                   ตรวจโดย: {displayReviewedBy(selectedReport.reviewedBy)}
                 </p>

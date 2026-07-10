@@ -65,6 +65,11 @@ export default function OverdueDeduction() {
   const maxRedeemableMinutes = data?.maxRedeemableMinutes ?? 0;
   const maxRedeemablePoints = Math.floor(maxRedeemableMinutes / 5);
 
+  // จำนวนคะแนนสูงสุดที่ "ใช้ได้จริง" ต้องไม่เกิน Overdue ที่เหลืออยู่ด้วย ไม่ใช่แค่คะแนนที่มี
+  const remainingOverdueMinutes = Math.floor(remainingOverdueSeconds / 60);
+  const maxUsablePointsByOverdue = Math.floor(remainingOverdueMinutes / 5);
+  const effectiveMaxPoints = Math.min(maxRedeemablePoints, maxUsablePointsByOverdue);
+
   const isMutating = redeemMutation.isPending;
 
   // คำนวณจาก input
@@ -82,6 +87,12 @@ export default function OverdueDeduction() {
     }
     if (inputPoints > maxRedeemablePoints) {
       setError(`คุณมีคะแนนเพียงพอสำหรับลดได้สูงสุด ${maxRedeemablePoints} คะแนน`);
+      return;
+    }
+    if (minutesWillReduce > remainingOverdueMinutes) {
+      setError(
+        `Overdue เหลือแค่ ${remainingOverdueMinutes} นาที ใช้คะแนนได้สูงสุด ${maxUsablePointsByOverdue} คะแนน`
+      );
       return;
     }
 
@@ -116,8 +127,10 @@ export default function OverdueDeduction() {
             <p className="mt-2 text-3xl font-bold">{formatDuration(remainingOverdueSeconds)}</p>
           </div>
           <div className="rounded-2xl border border-border bg-background p-4">
-            <p className="text-sm text-muted-foreground">สูงสุดที่ลดได้</p>
-            <p className="mt-2 text-3xl font-bold">{maxRedeemableMinutes} นาที</p>
+            <p className="text-sm text-muted-foreground">สูงสุดที่ลดได้จริง</p>
+            <p className="mt-2 text-3xl font-bold">
+              {Math.min(maxRedeemableMinutes, remainingOverdueMinutes)} นาที
+            </p>
           </div>
         </div>
       </div>
@@ -137,7 +150,7 @@ export default function OverdueDeduction() {
               id="points"
               type="number"
               min={1}
-              max={maxRedeemablePoints}
+              max={effectiveMaxPoints}
               value={pointsInput}
               onChange={(e) => setPointsInput(e.target.value)}
               placeholder="เช่น 1, 2, 5"
@@ -155,7 +168,12 @@ export default function OverdueDeduction() {
             )}
 
             <p className="text-xs text-muted-foreground">
-              สูงสุด {maxRedeemablePoints} คะแนน (ลดได้ {maxRedeemableMinutes} นาที)
+              สูงสุด {effectiveMaxPoints} คะแนน (ลดได้ {Math.min(maxRedeemableMinutes, remainingOverdueMinutes)} นาที)
+              {maxUsablePointsByOverdue < maxRedeemablePoints && (
+                <span className="block text-amber-600 mt-1">
+                  * ถูกจำกัดโดย Overdue ที่เหลืออยู่ ({remainingOverdueMinutes} นาที) ไม่ใช่คะแนนที่มี
+                </span>
+              )}
             </p>
           </div>
 
@@ -176,7 +194,7 @@ export default function OverdueDeduction() {
             </div>
             <Button
               onClick={handleSubmit}
-              disabled={isMutating || !data || maxRedeemablePoints <= 0}
+              disabled={isMutating || !data || effectiveMaxPoints <= 0}
               className="bg-green-600 hover:bg-green-700"
             >
               {isMutating ? "กำลังดำเนินการ..." : "ยืนยันลด Overdue"}
