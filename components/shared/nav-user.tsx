@@ -104,11 +104,13 @@ export default function NavUser() {
         profileImageUrl = uploadRes.url;
       }
 
+      
       const res = await updateUserMutation({
         id: authUser.id,
         data: {
           nickname: nickname.trim(),
           email: email.trim(),
+          role: authUser.role ? String(authUser.role).toUpperCase() : "INTERN",
           ...(profileImageUrl && { profileImage: profileImageUrl }),
         },
       });
@@ -116,7 +118,7 @@ export default function NavUser() {
       setUser({
         id: authUser.id,
         username: authUser.username,
-        role: authUser.role as "SUPER_ADMIN" | "ADMIN" | "STAFF",
+        role: authUser.role as "SUPER_ADMIN" | "ADMIN" | "STAFF" | "INTERN",
         createdAt: authUser.createdAt as unknown as string,
         updatedAt: (res.data as unknown as { updatedAt: string }).updatedAt ?? "",
         nickname: res.data.nickname,
@@ -124,6 +126,8 @@ export default function NavUser() {
         profileImage: (res.data as unknown as { profileImage?: string }).profileImage ?? authUser.profileImage,
       });
 
+      // ปิด Loading ของ SweetAlert2 ด้วยการเรียก Swal.close() ก่อนปิดกล่อง
+      Swal.close();
       setDialogOpen(false);
     } catch {
       // error handled inside mutations
@@ -169,7 +173,8 @@ export default function NavUser() {
 
       {/* Dialog จัดการโปรไฟล์ */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        {/* ✅ ปรับปรุง: แก้ไข className ให้กล่องยืดหยุ่นหดรับหน้าจอมือถือได้พอดี ไม่บีบชิดขอบจอเกินไป */}
+        <DialogContent className="w-[92%] max-w-md rounded-2xl p-5 sm:w-full sm:p-6 gap-4">
           <DialogHeader>
             <DialogTitle>Edit Profile</DialogTitle>
           </DialogHeader>
@@ -219,11 +224,13 @@ export default function NavUser() {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isBusy}>
+          
+          
+          <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-0 sm:space-x-2 w-full pt-2">
+            <Button className="w-full sm:w-auto" variant="outline" onClick={() => setDialogOpen(false)} disabled={isBusy}>
               Cancel
             </Button>
-            <Button onClick={handleUpdateProfile} disabled={isBusy}>
+            <Button className="w-full sm:w-auto bg-[#65a30d] hover:bg-[#54870a] text-white" onClick={handleUpdateProfile} disabled={isBusy}>
               {isBusy ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>

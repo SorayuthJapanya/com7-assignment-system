@@ -127,16 +127,22 @@ export default function ReportCalendar() {
           const submittedCount = summary?.submitted ?? 0;
           const rejectedCount = summary?.rejected ?? 0;
 
-          // LOGIC เช็กสีตามเงื่อนไขใหม่ของคุณ
-          let statusBadgeClass = "bg-yellow-100 text-yellow-700"; // ค่าเริ่มต้น: เหลือง (ยังส่งหรือตรวจไม่ครบ)
+          // 1. Logic จัดการสีสติกเกอร์ (สีเขียวเมื่อทุกคน Approved ครบ 100%)
+          let statusBadgeClass = "bg-yellow-100 text-yellow-700";
 
           if (total > 0) {
             if (approvedCount === total) {
-              statusBadgeClass = "bg-green-100 text-green-700"; // ส่งครบและ Approved หมดทุกคน = เขียว
-            } else if (submittedCount === total && rejectedCount > 0) {
-              statusBadgeClass = "bg-red-100 text-red-700"; // ส่งครบทุกคนแล้ว แต่มีคนโดน Rejected = แดง
+              statusBadgeClass = "bg-green-100 text-green-700"; // Approved ครบทุกคน = สีเขียว
+            } else if (submittedCount === total) {
+              if (rejectedCount > 0 && approvedCount + rejectedCount === total) {
+                statusBadgeClass = "bg-red-100 text-red-700"; // ส่งครบแล้วแต่มีคนติด Rejected = สีแดง
+              }
             }
           }
+
+          // 2. Logic ตัวเลขแสดงจำนวนคนค้างงาน: (จำนวนคนส่งจริง - จำนวนคนที่ตรวจผ่านแล้ว)
+          // หากส่ง 1 แล้วตรวจผ่านทันที ตัวเลขหลักหน้าจะกลับมาเป็น 0/3 เพื่อแจ้งว่าไม่มีงานรอตรวจค้างอยู่
+          const displayCount = Math.max(0, submittedCount - approvedCount);
 
           return (
             <button
@@ -153,7 +159,7 @@ export default function ReportCalendar() {
               {summary && (
                 <div className="flex flex-col gap-0.5 w-full">
                   <span className={`text-[10px] font-bold rounded px-1 text-center ${statusBadgeClass}`}>
-                    {approvedCount}/{total}
+                    {displayCount}/{total}
                   </span>
                 </div>
               )}

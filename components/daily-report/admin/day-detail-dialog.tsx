@@ -201,7 +201,7 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
                           </span>
                           {preview?.truncated && (
                             <span className="shrink-0 text-[11px] text-primary font-medium whitespace-nowrap">
-                              ดูเพิ่มเติม →
+                              ตรวจสอบรายละเอียดงาน →
                             </span>
                           )}
                         </button>

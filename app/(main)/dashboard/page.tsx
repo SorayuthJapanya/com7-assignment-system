@@ -56,7 +56,7 @@ export default function DashboardPage() {
 
   const isLoading = isSuperAdminLoading || isAuthLoading;
 
-  // 3. 🔄 ดักจับสิทธิ์: ถ้าโหลดเสร็จแล้วพบว่าเป็น INTERN ให้เด้งไปหน้า /daily-report ทันที
+  
   useEffect(() => {
     if (!isLoading && isIntern) {
       router.replace("/daily-report");
