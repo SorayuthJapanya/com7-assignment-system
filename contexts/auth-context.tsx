@@ -17,6 +17,7 @@ interface AuthContextType {
   user: AuthUser | null;
   isSuperAdmin: boolean;
   isAdmin: boolean;
+  isStaff: boolean; // 👈 1. เพิ่ม isStaff เข้าไปใน Type ของ คอนเท็กซ์
   isIntern: boolean;
   isLoading: boolean;
   setUser: (user: AuthUser | null) => void;
@@ -31,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isAdmin = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
+  const isStaff = user?.role === "STAFF"; // 
   const isIntern = user?.role === "INTERN";
 
   useEffect(() => {
@@ -69,11 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-        <AuthContext.Provider
+    <AuthContext.Provider
       value={{
         user,
         isSuperAdmin,
         isAdmin,
+        isStaff, // 👈 3. ส่งค่าออกไปให้คอมโพเนนต์อื่น ๆ ใช้งานได้ผ่าน useAuth()
         isIntern,
         isLoading,
         setUser: handleSetUser,

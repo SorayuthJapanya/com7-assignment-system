@@ -18,8 +18,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useIsSuperAdmin } from "@/hooks/use-current-user";
+import { useAuth } from "@/contexts/auth-context"; 
 import { Filter, X } from "lucide-react";
-import { useMemo, useState } from "react";
+// 1. นำเข้า useRouter และ useEffect สำหรับทำ Redirect
+import { useRouter } from "next/navigation"; 
+import { useMemo, useState, useEffect } from "react";
 
 const months = [
   { value: 1, label: "January" },
@@ -37,7 +40,10 @@ const months = [
 ];
 
 export default function DashboardPage() {
-  const { isSuperAdmin, isLoading } = useIsSuperAdmin();
+  const { isSuperAdmin, isLoading: isSuperAdminLoading } = useIsSuperAdmin();
+  const { isIntern, isLoading: isAuthLoading } = useAuth(); 
+  // 2. เรียกใช้งาน router
+  const router = useRouter(); 
 
   const [currentYear] = useState(() => new Date().getFullYear());
   const years = useMemo(
@@ -47,6 +53,26 @@ export default function DashboardPage() {
 
   const [year, setYear] = useState<number | null>(null);
   const [month, setMonth] = useState<number | null>(null);
+
+  const isLoading = isSuperAdminLoading || isAuthLoading;
+
+  // 3. 🔄 ดักจับสิทธิ์: ถ้าโหลดเสร็จแล้วพบว่าเป็น INTERN ให้เด้งไปหน้า /daily-report ทันที
+  useEffect(() => {
+    if (!isLoading && isIntern) {
+      router.replace("/daily-report");
+    }
+  }, [isIntern, isLoading, router]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center p-6">
+        <span className="text-muted-foreground">Loading dashboard...</span>
+      </div>
+    );
+  }
+
+  // 4. ระหว่างที่กำลังเปลี่ยนเส้นทาง ไม่ต้องเรนเดอร์ UI แดชบอร์ด
+  if (isIntern) return null;
 
   const filterLabel = year
     ? month
@@ -58,15 +84,13 @@ export default function DashboardPage() {
     <div className="w-full max-w-7xl xl:max-w-360 mx-auto space-y-8">
       <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-2">
         <Header
-  title={isLoading ? "Dashboard" : isSuperAdmin ? "Overview Dashboard" : "Dashboard"}
-  subTitle={
-    isLoading
-      ? "Loading..."
-      : isSuperAdmin
-        ? "Analytics and system overview"
-        : "Your assignment management hub"
-  }
-/>
+          title={isSuperAdmin ? "Overview Dashboard" : "Dashboard"}
+          subTitle={
+            isSuperAdmin
+              ? "Analytics and system overview"
+              : "Your assignment management hub"
+          }
+        />
 
         {/* Filtered */}
         <DropdownMenu>
@@ -136,11 +160,7 @@ export default function DashboardPage() {
         </DropdownMenu>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center">
-          <span className="text-muted-foreground">Loading dashboard...</span>
-        </div>
-      ) : isSuperAdmin ? (
+      {isSuperAdmin ? (
         <SuperAdminDashboard year={year} month={month} />
       ) : (
         <UserDashboard year={year} month={month} />
