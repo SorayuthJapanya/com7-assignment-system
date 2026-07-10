@@ -1,4 +1,4 @@
-import { FileText, LayoutDashboard, Users, Trophy, Settings2, LucideIcon } from "lucide-react";
+import { FileText, LayoutDashboard, Users, Trophy, Settings2, Calendar, LucideIcon } from "lucide-react";
 
 export type NavbarItem = {
     title: string;
@@ -42,6 +42,13 @@ export const navbarItems: NavbarItem[] = [
                 isAdmin: true,
             }
         ]
+    },
+    {
+        title: "Daily Report",
+        url: "/daily-report",
+        icon: Calendar,
+        isSuperAdmin: false,
+        isAdmin: false,
     },
     {
         title: "Leaderboard",

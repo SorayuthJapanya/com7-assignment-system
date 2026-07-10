@@ -1,6 +1,6 @@
 "use client";
 
-import { Grid3X3, Pencil } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -10,106 +10,232 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuthUser } from "@/contexts/auth-context";
 import { IUser } from "@/types/auth";
+import { useRef, useState, useEffect } from "react";
 
-interface AppItem {
-  name: string;
-  icon: string;
-  url: string;
-}
+const initialApps = [
+  { id: "nexhire7", name: "NexHire7", icon: "/icons8-ai-agent-96.png", url: "https://com7-hr-staging.comsevenaws.com/#/login" },
+  { id: "comsevencareer", name: "comsevencareer", icon: "/icons8-sparkles-96.png", url: "https://www.comsevencareer.com/" },
+  { id: "doctracker", name: "Doc Tracker", icon: "/icons8-google-docs-96 (2).png", url: "https://script.google.com/macros/s/AKfycbw0aulDfMeD_ICwcOGbqhpNU1FQAiKsrxfgsljpY6sklLOVC6voK__45B2C8aHP3TXKXw/exec" },
+  { id: "documentary", name: "Documentary", icon: "/icons8-protondrive-96.png", url: "https://script.google.com/macros/s/AKfycbyFYdh6k0z-qCpJwvAVvy0IKqwfCE0G_t_ct4GIl0EhUKEbXJEox0m3-OdVUqB32uB6/exec" },
+  { id: "weekly", name: "Weekly Overview", icon: "/icons8-report-96 (1).png", url: "-" },
+  { id: "dashboard", name: "Dashboard & New Store", icon: "/icons8-dashboard-96 (1).png", url: "https://script.google.com/macros/s/AKfycbySJQ7fibyfwXy3ZK6xFwZZfE3viTjVsHOi1VtSujygMQwJjrf2b3idFF1B0LH2o9LF_Q/exec" },
+  { id: "ads", name: "Ads", icon: "/icons8-canva-96.png", url: "https://www.canva.com/folder/FAHOyGHWd_4" },
+  { id: "org", name: "Organization Chart", icon: "/icons8-report-96 (1).png", url: "https://www.canva.com/folder/FAFqB-P8ou8" },
+  { id: "vacancy", name: "Update Vacancy", icon: "/icons8-google-sheets-96 (1).png", url: "-" },
+  { id: "vacancy_project", name: "Vacancy HQ/Branch/Project", icon: "/icons8-google-sheets-96 (1).png", url: "https://docs.google.com/spreadsheets/d/19jV0tEPp483wGKaqNXe63JUJI2tPnKsPoTvyQpzuUzg/edit?usp=drive_web&ouid=100085330486160439309" },
+  { id: "benefit", name: "Benefit Sheet", icon: "/icons8-google-sheets-96 (1).png", url: "-" },
+  { id: "new_asset", name: "เบิกทรัพย์สินพนักงานใหม่", icon: "/icons8-google-sheets-96 (1).png", url: "https://docs.google.com/spreadsheets/d/1cs7mv2gW4iSVoAjuFsvn0qmFpoungZzMe3-DIK8wZUk/edit?usp=drive_web&ouid=100085330486160439309" },
+];
 
 export default function AppLauncher() {
   const authUser = useAuthUser() as IUser | null;
+  const [appsOpen, setAppsOpen] = useState(false);
+  const [appList, setAppList] = useState(initialApps);
+  const [tempAppList, setTempAppList] = useState(initialApps);
+  const [isEditMode, setIsEditMode] = useState(false);
+  
+  const dragItemIndex = useRef<number | null>(null);
+  const dragOverItemIndex = useRef<number | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // ส่วนที่ 1: กลุ่มรายการโปรด (แสดงด้านบน)
-  const favoriteApps: AppItem[] = [
-    { name: "NexHire7", icon: "/icons/icons8-ai-agent-96.png", url: "https://com7-hr-staging.comsevenaws.com/#/login" },
-    { name: "comsevencareer", icon: "/icons/icons8-sparkles-96.png", url: "https://www.comsevencareer.com/" },
-    { name: "Doc Tracker", icon: "/icons/icons8-google-docs-96 (2).png", url: "https://script.google.com/macros/s/AKfycbw0aulDfMeD_ICwcOGbqhpNU1FQAiKsrxfgsljpY6sklLOVC6voK__45B2C8aHP3TXKXw/exec" },
-    { name: "Documentary", icon: "/icons/icons8-protondrive-96.png", url: "https://script.google.com/macros/s/AKfycbyFYdh6k0z-qCpJwvAVvy0IKqwfCE0G_t_ct4GIl0EhUKEbXJEox0m3-OdVUqB32uB6/exec" },
-    { name: "Dashboard & New Store", icon: "/icons/icons8-dashboard-96 (1).png", url: "https://script.google.com/macros/s/AKfycbySJQ7fibyfwXy3ZK6xFwZZfE3viTjVsHOi1VtSujygMQwJjrf2b3idFF1B0LH2o9LF_Q/exec" },
-    { name: "Ads", icon: "/icons/icons8-canva-96.png", url: "https://www.canva.com/folder/FAHOyGHWd_4" },
-    { name: "Organization Chart", icon: "/icons/icons8-report-96 (1).png", url: "https://www.canva.com/folder/FAFqB-P8ou8" },
-  ];
+  useEffect(() => {
+    setIsMounted(true);
+    const savedOrder = localStorage.getItem("com7_apps_order");
+    if (savedOrder) {
+      try {
+        const parsed = JSON.parse(savedOrder);
+        setAppList(parsed);
+        setTempAppList(parsed);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
 
-  // ส่วนที่ 2: กลุ่มแอปพลิเคชันทั่วไป (แสดงด้านล่าง)
-  const generalApps: AppItem[] = [
-    { name: "Vacancy HQ/Branch/Project", icon: "/icons/icons8-google-sheets-96 (1).png", url: "https://docs.google.com/spreadsheets/d/19jV0tEPp483wGKaqNXe63JUJI2tPnKsPoTvyQpzuUzg/edit?usp=drive_web&ouid=100085330486160439309" },
-    { name: "เบิกทรัพย์สินพนักงานใหม่", icon: "/icons/icons8-google-sheets-96 (1).png", url: "https://docs.google.com/spreadsheets/d/1cs7mv2gW4iSVoAjuFsvn0qmFpoungZzMe3-DIK8wZUk/edit?usp=drive_web&ouid=100085330486160439309" },
-  ];
+  if (!isMounted || !authUser) return null;
+
+  // ซ่อนระบบทั้งหมดถาวรถ้าเป็น INTERN ตาม Logic ดั้งเดิมของคุณ
+  if (authUser?.role === "INTERN") return null;
+
+  const handleStartEditApps = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setTempAppList([...appList]);
+    setIsEditMode(true);
+  };
+
+  const handleSaveAppsOrder = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    localStorage.setItem("com7_apps_order", JSON.stringify(appList));
+    setIsEditMode(false);
+  };
+
+  const handleCancelEditApps = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setAppList([...tempAppList]);
+    setIsEditMode(false);
+  };
+
+  const handleDragStart = (index: number) => {
+    dragItemIndex.current = index;
+  };
+
+  const handleDragEnter = (index: number) => {
+    dragOverItemIndex.current = index;
+    if (dragItemIndex.current === null || dragItemIndex.current === index) return;
+
+    const listCopy = [...appList];
+    const targetItem = listCopy[dragItemIndex.current];
+    listCopy.splice(dragItemIndex.current, 1);
+    listCopy.splice(index, 0, targetItem);
+
+    dragItemIndex.current = index;
+    setAppList(listCopy);
+  };
+
+  const handleDragEnd = () => {
+    dragItemIndex.current = null;
+    dragOverItemIndex.current = null;
+  };
 
   return (
-    <div className="flex justify-end p-4">
-      <DropdownMenu>
-        {/* ปุ่มจุด 9 จุดสำหรับกดเปิด */}
+    <div className="relative">
+      <style>{`
+        @keyframes wiggle {
+          0% { transform: rotate(0deg); }
+          25% { transform: rotate(-1.5deg); }
+          75% { transform: rotate(1.5deg); }
+          100% { transform: rotate(0deg); }
+        }
+        .animate-wiggle {
+          animation: wiggle 0.25s ease-in-out infinite;
+        }
+      `}</style>
+
+      <DropdownMenu open={appsOpen} onOpenChange={(open) => { if (!isEditMode) setAppsOpen(open); }}>
         <DropdownMenuTrigger asChild>
-          <button 
-            className="flex items-center justify-center size-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors outline-none"
+          <button
+            onClick={() => {
+              setAppsOpen(!appsOpen);
+              setIsEditMode(false);
+            }}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex items-center justify-center outline-none"
             title="Apps"
+            type="button"
           >
-            <Grid3X3 className="size-6 text-gray-700 dark:text-gray-300" />
+            <Image
+              src="/icons8-menu-50.png"
+              alt="Menu Icon"
+              width={24}
+              height={24}
+              className="object-contain"
+            />
           </button>
         </DropdownMenuTrigger>
 
-        {/* กล่องดีไซน์ลอยสไตล์ Google Popover */}
-        <DropdownMenuContent 
-          align="end" 
+        <DropdownMenuContent
+          align="end"
           sideOffset={12}
-          className="w-[360px] max-h-[85vh] overflow-y-auto rounded-[28px] bg-[#f8f9fa] dark:bg-gray-900 border border-gray-200/80 dark:border-gray-700 p-0 shadow-2xl"
+          className="w-[340px] rounded-3xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-0 shadow-2xl overflow-hidden z-50"
         >
-          {/* การ์ดส่วนบน: รายการโปรด */}
-          <div className="m-2 p-4 bg-white dark:bg-gray-850 rounded-[24px] shadow-sm border border-gray-100 dark:border-gray-800">
-            <div className="flex justify-between items-center mb-4 px-2">
-              <h2 className="text-base font-normal text-gray-700 dark:text-gray-300">
-                Hi, <span className="font-semibold text-purple-600 dark:text-purple-400">{authUser?.nickname || "User"}</span>
-              </h2>
-              <button className="p-2 bg-[#d3e3fd] text-[#041e49] rounded-full hover:bg-[#b4cff7] transition-colors">
-                <Pencil className="size-4" />
+          {!isEditMode ? (
+            <div className="p-5 border-b flex items-center justify-between bg-gray-50 dark:bg-gray-800">
+              <h3 className="font-semibold text-lg text-gray-990 dark:text-white">
+                Hi, <span className="text-purple-600 dark:text-purple-400">{authUser?.nickname}</span>
+              </h3>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleStartEditApps}
+                  className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-gray-600 dark:text-gray-300"
+                  title="จัดเรียงแอป"
+                  type="button"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button onClick={() => setAppsOpen(false)} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-gray-500 dark:text-gray-400" type="button">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 border-b flex items-center justify-between bg-gray-50 dark:bg-gray-800">
+              <button
+                onClick={handleCancelEditApps}
+                className="px-4 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-700 dark:text-gray-200 rounded-full text-sm font-medium transition-colors"
+                type="button"
+              >
+                ยกเลิก
+              </button>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">ลากและวางแอป</span>
+              <button
+                onClick={handleSaveAppsOrder}
+                className="px-5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-sm font-medium transition-colors shadow-sm"
+                type="button"
+              >
+                เสร็จ
               </button>
             </div>
+          )}
 
-            {/* Grid แอปพลิเคชันแถวบน */}
-            <div className="grid grid-cols-3 gap-y-4 gap-x-2">
-              {favoriteApps.map((app, index) => (
+          <div className="p-6 grid grid-cols-3 gap-5 max-h-[460px] overflow-y-auto">
+            {appList.map((app, index) => {
+              const hasValidLink = app.url && app.url !== "-";
+
+              const appContent = (
+                <>
+                  <div className={`w-16 h-16 relative flex items-center justify-center rounded-2xl bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden ${isEditMode ? 'cursor-grab active:cursor-grabbing border-dashed border-blue-400 dark:border-blue-500 animate-wiggle' : 'group-hover:shadow-md transition-all group-hover:scale-105'}`}>
+                    <Image
+                      src={app.icon}
+                      alt={app.name}
+                      width={36}
+                      height={36}
+                      className="object-contain select-none"
+                      draggable={false}
+                      priority={index < 6}
+                    />
+                  </div>
+                  <span className="text-[13px] text-center font-medium text-gray-700 dark:text-gray-300 leading-tight line-clamp-2 min-h-[42px] w-full select-none">
+                    {app.name}
+                  </span>
+                </>
+              );
+
+              if (isEditMode) {
+                return (
+                  <div
+                    key={app.id}
+                    draggable
+                    onDragStart={() => handleDragStart(index)}
+                    onDragEnter={() => handleDragEnter(index)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={(e) => e.preventDefault()}
+                    className="flex flex-col items-center gap-3 opacity-95 hover:opacity-100"
+                  >
+                    {appContent}
+                  </div>
+                );
+              }
+
+              return hasValidLink ? (
                 <Link
-                  key={index}
+                  key={app.id}
                   href={app.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex flex-col items-center p-2 rounded-2xl hover:bg-gray-100/80 dark:hover:bg-gray-800/50 transition-colors text-center group"
+                  onClick={() => setAppsOpen(false)}
+                  className="flex flex-col items-center gap-3 group text-decoration-none"
                 >
-                  <div className="w-14 h-14 relative flex items-center justify-center rounded-2xl bg-white shadow-sm border border-gray-100 dark:border-gray-700 group-hover:shadow-md transition-all group-hover:scale-105">
-                    <Image src={app.icon} alt={app.name} width={48} height={48} className="object-contain" />
-                  </div>
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400 line-clamp-2 w-full mt-1.5 px-1 leading-tight min-h-[32px]">
-                    {app.name}
-                  </span>
+                  {appContent}
                 </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* การ์ดส่วนล่าง: แอปทั่วไป */}
-          <div className="p-4 pt-2">
-            <div className="grid grid-cols-3 gap-y-4 gap-x-2">
-              {generalApps.map((app, index) => (
-                <Link
-                  key={index}
-                  href={app.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex flex-col items-center p-2 rounded-2xl hover:bg-gray-200/50 dark:hover:bg-gray-800/80 transition-colors text-center group"
+              ) : (
+                <div
+                  key={app.id}
+                  className="flex flex-col items-center gap-3 group opacity-75"
                 >
-                  <div className="w-14 h-14 relative flex items-center justify-center rounded-2xl bg-white shadow-sm border border-gray-100 dark:border-gray-700 group-hover:shadow-md transition-all group-hover:scale-105">
-                    <Image src={app.icon} alt={app.name} width={48} height={48} className="object-contain" />
-                  </div>
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400 line-clamp-2 w-full mt-1.5 px-1 leading-tight min-h-[32px]">
-                    {app.name}
-                  </span>
-                </Link>
-              ))}
-            </div>
+                  {appContent}
+                </div>
+              );
+            })}
           </div>
-          
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

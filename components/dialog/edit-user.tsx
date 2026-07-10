@@ -32,7 +32,7 @@ import { useUpdateUser } from "@/hooks/use-auth";
 import { IUser } from "@/types/auth";
 import Swal from "sweetalert2";
 
-const ROLE_OPTIONS = ["STAFF", "ADMIN", "SUPER_ADMIN"] as const;
+const ROLE_OPTIONS = ["STAFF", "ADMIN", "SUPER_ADMIN", "INTERN"] as const;
 
 const editUserSchema = z.object({
   username: z.string().min(1, "Username is required"),

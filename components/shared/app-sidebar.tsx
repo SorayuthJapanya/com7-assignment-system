@@ -22,8 +22,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../ui/collapsible";
-import { ChevronRight, Clock } from "lucide-react"; // เพิ่ม Clock ไอคอนสำหรับ Overdue
-import NavUser from "./nav-user";
+import { ChevronRight, Clock } from "lucide-react"; 
 import { usePathname } from "next/navigation";
 import { useMemo, useEffect, useState } from "react";
 import { useAuth, useAuthUser } from "@/contexts/auth-context";
@@ -52,6 +51,7 @@ const formatRole = (role: string) => {
     case "SUPER_ADMIN": return "Super Admin";
     case "ADMIN": return "Admin";
     case "STAFF": return "Staff";
+    case "INTERN": return "Intern";
     default: return role;
   }
 };
@@ -59,7 +59,7 @@ const formatRole = (role: string) => {
 function resolveLevel(score: number, levels: ILevel[]) {
   const sorted = [...levels].sort((a, b) => a.minScore - b.minScore);
   let matchedIndex = sorted.findIndex((l) => score >= l.minScore && score <= l.maxScore);
-  
+
   if (matchedIndex === -1 && sorted.length > 0 && score > sorted[sorted.length - 1].maxScore) {
     matchedIndex = sorted.length - 1;
   }
@@ -110,7 +110,7 @@ function calcWeeklyCompleted(assignments: AssignmentItem[]): number {
 
 export default function AppSidebar() {
   const pathname = usePathname();
-  const { isSuperAdmin, isAdmin } = useAuth();
+  const { isSuperAdmin, isAdmin, isIntern } = useAuth();
   const authUser = useAuthUser() as IUser | null;
 
   const { data: levels = [] } = useGetLevels();
@@ -137,7 +137,7 @@ export default function AppSidebar() {
       .then((json) => {
         if (json?.assignments) setAssignments(json.assignments);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [mounted]);
 
   const weekDays = useMemo(() => getCurrentWeekDays(), []);
@@ -153,6 +153,10 @@ export default function AppSidebar() {
   const isSubItemActive = (url: string) => pathname === url;
 
   const filteredNavbarItems = useMemo(() => {
+    if (isIntern) {
+      return navbarItems.filter((item) => item.title === "Daily Report");
+    }
+
     return navbarItems
       .map((item) => ({
         ...item,
@@ -167,11 +171,11 @@ export default function AppSidebar() {
         if (item.isAdmin && !isAdmin) return false;
         return true;
       });
-  }, [isSuperAdmin, isAdmin]);
+  }, [isSuperAdmin, isAdmin, isIntern]);
 
   if (!mounted) return null;
 
-  const avatarUrl = authUser?.profileImage; 
+  const avatarUrl = authUser?.profileImage;
   const initials = authUser?.nickname?.charAt(0).toUpperCase() ?? "U";
 
   return (
@@ -244,11 +248,10 @@ export default function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
               {filteredNavbarItems.map((item) => {
-                // 🎯 แทรกเมนู Overdue Deduction ให้อยู่ข้างหน้า Leaderboard โดยเฉพาะ
                 if (item.title === "Leaderboard") {
                   return (
                     <React.Fragment key="leaderboard-group">
-                      {!isAdmin && !isSuperAdmin && (
+                      {!isAdmin && !isSuperAdmin && !isIntern && (
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
@@ -287,7 +290,6 @@ export default function AppSidebar() {
                   );
                 }
 
-                // สั่งเรนเดอร์เมนูอื่นๆ (Dashboard, Assignment) ตามปกติ
                 return (
                   <Collapsible key={item.title} asChild defaultOpen={isActive(item.url)}>
                     <SidebarMenuItem>
@@ -353,50 +355,39 @@ export default function AppSidebar() {
 
       {/* ───── Footer ───── */}
       <SidebarFooter className="shrink-0 border-t border-sidebar-border bg-sidebar max-h-[45vh] overflow-y-auto p-0 gap-0">
-        
-        {/* ───── WEEKLY CHALLENGE Card ───── */}
-        <SidebarGroup className="px-3 pt-1 pb-2">
-          <div className={`rounded-xl border p-2.5 flex flex-col gap-1.5 ${
-            challengeDone ? "bg-green-50 border-green-200" : "bg-yellow-50 border-yellow-100"
-          }`}>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm">{challengeDone ? "🏆" : "🎯"}</span>
-              <span className={`text-[10px] font-bold tracking-wide uppercase ${
-                challengeDone ? "text-green-700" : "text-yellow-700"
-              }`}>
-                Weekly Challenge
-              </span>
-            </div>
-            <p className="text-[10px] text-gray-700 leading-tight font-medium">
-              {challengeDone
-                ? `Challenge completed! 🎉 (${challengeProgress}/${CHALLENGE_TOTAL})`
-                : `Complete ${CHALLENGE_TOTAL} assignments this week (${challengeProgress}/${CHALLENGE_TOTAL})`}
-            </p>
-            <div className="w-full bg-gray-200 rounded-full h-1 overflow-hidden">
-              <div
-                className={`h-1 rounded-full transition-all duration-500 ${
-                  challengeDone ? "bg-green-500" : "bg-orange-400"
-                }`}
-                style={{ width: `${(challengeProgress / CHALLENGE_TOTAL) * 100}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between leading-none">
-              <span className="text-[10px] text-muted-foreground font-medium">
-                {challengeProgress} / {CHALLENGE_TOTAL}
-              </span>
-              <span className={`flex items-center gap-0.5 text-[10px] font-bold ${
-                challengeDone ? "text-green-700" : "text-gray-700"
-              }`}>
-                🎁 +{CHALLENGE_XP} XP
-              </span>
-            </div>
-          </div>
-        </SidebarGroup>
 
-        {/* บัญชีรายชื่อและการตั้งค่าผู้ใช้งาน */}
-        <div className="p-2 bg-sidebar w-full shrink-0">
-          <NavUser />
-        </div>
+        {/* ───── WEEKLY CHALLENGE Card ───── */}
+        {!isIntern && (
+          <SidebarGroup className="px-3 pt-1 pb-2">
+            <div className={`rounded-xl border p-2.5 flex flex-col gap-1.5 ${challengeDone ? "bg-green-50 border-green-200" : "bg-yellow-50 border-yellow-100"}`}>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm">{challengeDone ? "🏆" : "🎯"}</span>
+                <span className={`text-[10px] font-bold tracking-wide uppercase ${challengeDone ? "text-green-700" : "text-yellow-700"}`}>
+                  Weekly Challenge
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-700 leading-tight font-medium">
+                {challengeDone
+                  ? `Challenge completed! 🎉 (${challengeProgress}/${CHALLENGE_TOTAL})`
+                  : `Complete ${CHALLENGE_TOTAL} assignments this week (${challengeProgress}/${CHALLENGE_TOTAL})`}
+              </p>
+              <div className="w-full bg-gray-200 rounded-full h-1 overflow-hidden">
+                <div
+                  className={`h-1 rounded-full transition-all duration-500 ${challengeDone ? "bg-green-500" : "bg-orange-400"}`}
+                  style={{ width: `${(challengeProgress / CHALLENGE_TOTAL) * 100}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between leading-none">
+                <span className="text-[10px] text-muted-foreground font-medium">
+                  {challengeProgress} / {CHALLENGE_TOTAL}
+                </span>
+                <span className={`flex items-center gap-0.5 text-[10px] font-bold ${challengeDone ? "text-green-700" : "text-gray-700"}`}>
+                  🎁 +{CHALLENGE_XP} XP
+                </span>
+              </div>
+            </div>
+          </SidebarGroup>
+        )}
 
       </SidebarFooter>
 

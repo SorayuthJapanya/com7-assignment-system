@@ -35,6 +35,10 @@ const roleConfig: Record<string, { label: string; color: string }> = {
     label: "Staff",
     color: "bg-primary/15 text-primary border-primary/30",
   },
+  INTERN: {
+    label: "Intern",
+    color: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  },
 };
 
 function resolveLevel(score: number, levels: ILevel[]) {

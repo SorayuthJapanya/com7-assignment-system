@@ -7,7 +7,7 @@ interface AuthUser {
   username: string;
   nickname: string;
   email: string;
-  role: "SUPER_ADMIN" | "ADMIN" | "STAFF";
+  role: "SUPER_ADMIN" | "ADMIN" | "STAFF" | "INTERN";
   profileImage?: string;
   createdAt: string;
   updatedAt: string;
@@ -17,6 +17,7 @@ interface AuthContextType {
   user: AuthUser | null;
   isSuperAdmin: boolean;
   isAdmin: boolean;
+  isIntern: boolean;
   isLoading: boolean;
   setUser: (user: AuthUser | null) => void;
   logout: () => void;
@@ -30,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isAdmin = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
+  const isIntern = user?.role === "INTERN";
 
   useEffect(() => {
     // Only run on client side
@@ -67,11 +69,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider
+        <AuthContext.Provider
       value={{
         user,
         isSuperAdmin,
         isAdmin,
+        isIntern,
         isLoading,
         setUser: handleSetUser,
         logout,

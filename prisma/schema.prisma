@@ -26,12 +26,14 @@ model User {
   updatedAt    DateTime     @updatedAt
   assignments Assignment[]
   scores      Score[]
+  dailyReports  DailyReport[]
 }
 
 enum Role {
   SUPER_ADMIN
   ADMIN
   STAFF
+  INTERN
 }
 
 model Assignment {
@@ -91,4 +93,27 @@ model Level {
   updatedAt DateTime @updatedAt
 
   @@map("levels")
+}
+
+model DailyReport {
+  id          String       @id @default(uuid())
+  userId      String
+  date        DateTime     @db.Date
+  description String       @db.Text
+  imageUrl    String?      @db.VarChar(500)
+  status      ReportStatus @default(Pending)
+  reviewedBy  String?
+  feedback    String       @default("")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("daily_reports")
+}
+
+enum ReportStatus {
+  Pending
+  Approved
+  Rejected
 }
