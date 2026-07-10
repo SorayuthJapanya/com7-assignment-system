@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Maximize2, X, ImageOff } from "lucide-react";
 import { useAuthUser } from "@/contexts/auth-context";
 import {
   Dialog,
@@ -61,10 +61,16 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
   // null = แสดงหน้ารายการ, มีค่า = แสดงหน้ารายละเอียด
   const [selectedReport, setSelectedReport] = useState<ReportPreview | null>(null);
 
+  // เก็บ url รูปที่กำลังดูแบบเต็มจอ (lightbox)
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+
+  // เก็บว่ารูปของ report ไหนโหลดไม่สำเร็จบ้าง (key = imageUrl)
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
+
   // เก็บผลของการตรวจล่าสุดไว้ที่ฝั่ง client ด้วย
   const [reviewOverrides, setReviewOverrides] = useState<
     Record<string, { status: string; reviewedBy: string }>
-  >( {});
+  >({});
 
   // ใช้ username ของ user ที่ login อยู่ตอนนี้ ส่งไปเป็นผู้ตรวจโดยตรง
   const handleToggleApprove = (reportId: string, currentStatus: string) => {
@@ -137,8 +143,35 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
                   ? getFirstLinePreview(item.report?.description ?? "")
                   : null;
 
+                const openDetail = () => {
+                  if (!submitted) return;
+                  setSelectedReport({
+                    reportId: item.report!.id,
+                    nickname: item.nickname,
+                    username: item.username,
+                    description: item.report?.description ?? "",
+                    imageUrl: item.report?.imageUrl,
+                    status: effective?.status,
+                    reviewedBy: effective?.reviewedBy,
+                  });
+                };
+
                 return (
-                  <div key={item.userId} className="flex flex-col gap-2 rounded-xl border p-3">
+                  <div
+                    key={item.userId}
+                    role={submitted ? "button" : undefined}
+                    tabIndex={submitted ? 0 : undefined}
+                    onClick={openDetail}
+                    onKeyDown={(e) => {
+                      if (submitted && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        openDetail();
+                      }
+                    }}
+                    className={`flex flex-col gap-2 rounded-xl border p-3 transition-colors ${
+                      submitted ? "cursor-pointer hover:border-primary hover:bg-primary/5" : ""
+                    }`}
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5">
                         <div className="size-9 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden shrink-0">
@@ -178,21 +211,7 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
 
                     {submitted && (
                       <div className="pl-11.5 flex flex-col gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSelectedReport({
-                              reportId: item.report!.id,
-                              nickname: item.nickname,
-                              username: item.username,
-                              description: item.report?.description ?? "",
-                              imageUrl: item.report?.imageUrl,
-                              status: effective?.status,
-                              reviewedBy: effective?.reviewedBy,
-                            })
-                          }
-                          className="group flex items-center gap-1.5 text-left text-sm text-gray-700 hover:text-primary w-fit max-w-full"
-                        >
+                        <div className="flex items-center gap-1.5 text-sm text-gray-700 w-fit max-w-full">
                           <span className="truncate underline decoration-dotted underline-offset-2">
                             {preview?.text}
                           </span>
@@ -201,9 +220,8 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
                               ตรวจสอบรายละเอียดงาน →
                             </span>
                           )}
-                        </button>
+                        </div>
 
-                        
                         {effective?.status !== "Pending" && displayReviewedBy(effective?.reviewedBy) && (
                           <p className="text-[11px] text-muted-foreground">
                             ตรวจโดย: {displayReviewedBy(effective?.reviewedBy)}
@@ -259,7 +277,6 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
                 {selectedReport.description}
               </p>
 
-              
               {selectedReport.status !== "Pending" && displayReviewedBy(selectedReport.reviewedBy) && (
                 <p className="text-[11px] text-muted-foreground">
                   ตรวจโดย: {displayReviewedBy(selectedReport.reviewedBy)}
@@ -267,17 +284,63 @@ export default function DayDetailDialog({ date, open, onClose }: DayDetailDialog
               )}
 
               {selectedReport.imageUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={selectedReport.imageUrl}
-                  alt="report image"
-                  className="rounded-lg border object-cover w-full max-h-80"
-                />
+                <div className="relative w-full">
+                  {brokenImages[selectedReport.imageUrl] ? (
+                    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed h-48 text-muted-foreground">
+                      <ImageOff className="size-6" />
+                      <p className="text-xs">ไม่สามารถโหลดรูปภาพได้</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={selectedReport.imageUrl}
+                        alt="report image"
+                        onError={() =>
+                          setBrokenImages((prev) => ({ ...prev, [selectedReport.imageUrl!]: true }))
+                        }
+                        className="rounded-lg border object-contain bg-muted/30 w-full max-h-80"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFullscreenImage(selectedReport.imageUrl!)}
+                        aria-label="ขยายดูรูปภาพ"
+                        className="absolute top-2 right-2 size-8 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white transition-colors"
+                      >
+                        <Maximize2 className="size-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           </>
         )}
       </DialogContent>
+
+      {/* ===== Lightbox แสดงรูปภาพเต็มจอ ===== */}
+      {fullscreenImage && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setFullscreenImage(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setFullscreenImage(null)}
+            aria-label="ปิดรูปภาพ"
+            className="absolute top-4 right-4 size-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+          >
+            <X className="size-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={fullscreenImage}
+            alt="report image full"
+            className="max-w-full max-h-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </Dialog>
   );
 }
