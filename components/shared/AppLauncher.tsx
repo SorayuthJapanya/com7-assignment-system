@@ -20,7 +20,7 @@ const initialApps = [
   { id: "weekly", name: "Weekly Overview", icon: "/icons8-report-96 (1).png", url: "-" },
   { id: "dashboard", name: "Dashboard & New Store", icon: "/icons8-dashboard-96 (1).png", url: "https://script.google.com/macros/s/AKfycbySJQ7fibyfwXy3ZK6xFwZZfE3viTjVsHOi1VtSujygMQwJjrf2b3idFF1B0LH2o9LF_Q/exec" },
   { id: "ads", name: "Ads", icon: "/icons8-canva-96.png", url: "https://www.canva.com/folder/FAHOyGHWd_4" },
-  { id: "org", name: "Organization Chart", icon: "/icons8-report-96 (1).png", url: "https://www.canva.com/folder/FAFqB-P8ou8" },
+  { id: "org", name: "Organization Chart", icon: "/icons8-canva-96.png", url: "https://www.canva.com/folder/FAFqB-P8ou8" },
   { id: "vacancy", name: "Update Vacancy", icon: "/icons8-google-sheets-96 (1).png", url: "-" },
   { id: "vacancy_project", name: "Vacancy HQ/Branch/Project", icon: "/icons8-google-sheets-96 (1).png", url: "https://docs.google.com/spreadsheets/d/19jV0tEPp483wGKaqNXe63JUJI2tPnKsPoTvyQpzuUzg/edit?usp=drive_web&ouid=100085330486160439309" },
   { id: "benefit", name: "Benefit Sheet", icon: "/icons8-google-sheets-96 (1).png", url: "-" },
@@ -43,9 +43,23 @@ export default function AppLauncher() {
     const savedOrder = localStorage.getItem("com7_apps_order");
     if (savedOrder) {
       try {
-        const parsed = JSON.parse(savedOrder);
-        setAppList(parsed);
-        setTempAppList(parsed);
+        const parsed = JSON.parse(savedOrder) as typeof initialApps;
+
+        // Merge: ใช้ "ลำดับ" ที่ผู้ใช้เคยจัดไว้ต่อ แต่ดึง icon/name/url ล่าสุดจาก initialApps เสมอ
+        // กันปัญหาไอคอน/ชื่อ/ลิงก์เก่าค้างอยู่ใน localStorage หลังแก้โค้ด
+        const latestById = new Map(initialApps.map((app) => [app.id, app]));
+
+        const merged = parsed
+          .filter((saved) => latestById.has(saved.id)) // ตัดแอปที่ถูกลบออกจากระบบไปแล้ว
+          .map((saved) => latestById.get(saved.id)!); // แทนที่ข้อมูลด้วยของล่าสุดทั้งหมด ยกเว้นตำแหน่ง
+
+        // เผื่อมีแอปใหม่ถูกเพิ่มเข้ามาใน initialApps ทีหลัง (ที่ merged ยังไม่มี) ให้ต่อท้ายไปด้วย
+        const mergedIds = new Set(merged.map((app) => app.id));
+        const newApps = initialApps.filter((app) => !mergedIds.has(app.id));
+        const finalList = [...merged, ...newApps];
+
+        setAppList(finalList);
+        setTempAppList(finalList);
       } catch (e) {
         console.error(e);
       }
@@ -54,7 +68,7 @@ export default function AppLauncher() {
 
   if (!isMounted || !authUser) return null;
 
-  // ซ่อนระบบทั้งหมดถาวรถ้าเป็น INTERN ตาม Logic ดั้งเดิมของคุณ
+  // ซ่อนระบบทั้งหมดถาวรถ้าเป็น INTERN
   if (authUser?.role === "INTERN") return null;
 
   const handleStartEditApps = (e: React.MouseEvent) => {

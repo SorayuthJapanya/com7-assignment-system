@@ -11,7 +11,7 @@ interface DaySummary {
   date: string;
   totalInterns: number;
   submitted: number;
-  approved: number; 
+  approved: number;
   rejected: number;
 }
 
@@ -140,27 +140,43 @@ export default function ReportCalendar() {
             }
           }
 
-          // 2. Logic ตัวเลขแสดงจำนวนคนค้างงาน: (จำนวนคนส่งจริง - จำนวนคนที่ตรวจผ่านแล้ว)
-          // หากส่ง 1 แล้วตรวจผ่านทันที ตัวเลขหลักหน้าจะกลับมาเป็น 0/3 เพื่อแจ้งว่าไม่มีงานรอตรวจค้างอยู่
-          const displayCount = Math.max(0, submittedCount - approvedCount);
+          // 2. Logic ตัวเลขแสดงจำนวนคนที่ตรวจ Approved แล้ว เทียบกับจำนวนทั้งหมด
+          // เช่น approved ครบ 4 คนจาก intern ทั้งหมด 4 คน ต้องแสดง 4/4 (ไม่ใช่ 0/4)
+          const displayCount = approvedCount;
+
+          // 3. จำนวนคนที่ "ส่งงานแล้ว แต่ยังไม่ได้ตรวจ" (สถานะ Pending) แยกจากคนที่ "ยังไม่ส่ง"
+          // เช่น ส่งมา 4 คน approve ไปแล้ว 1 คน reject 0 คน เหลือรอตรวจ 3 คน
+          const pendingReview = Math.max(0, submittedCount - approvedCount - rejectedCount);
 
           return (
             <button
               key={dateKey}
               onClick={() => setSelectedDate(dateKey)}
-              className={`aspect-square rounded-lg border p-1.5 flex flex-col items-start justify-between text-left transition-colors hover:border-primary hover:bg-primary/5 ${
-                isToday(day) ? "border-primary bg-primary/5" : "border-border"
-              }`}
+              // หน้าจอคอม (smขึ้นไป) จะกลับมาเป็นสี่เหลี่ยมจัตุรัส aspect-square และเพิ่ม padding เป็น p-2
+              className={`w-full min-h-[55px] sm:aspect-square rounded-lg border p-1 sm:p-2 flex flex-col items-stretch justify-between text-left transition-colors hover:border-primary hover:bg-primary/5 ${isToday(day) ? "border-primary bg-primary/5" : "border-border"
+                }`}
             >
-              <span className={`text-xs font-semibold ${isToday(day) ? "text-primary" : ""}`}>
+              {/* เลขวันที่: บนคอมจะขยายเป็น text-sm และดูเด่นขึ้น */}
+              <span className={`text-[11px] sm:text-sm font-semibold block px-0.5 ${isToday(day) ? "text-primary" : ""}`}>
                 {day}
               </span>
 
               {summary && (
-                <div className="flex flex-col gap-0.5 w-full">
-                  <span className={`text-[10px] font-bold rounded px-1 text-center ${statusBadgeClass}`}>
+                // บนคอมขยาย gap-1 เพื่อให้ดูไม่ติดกันเกินไป
+                <div className="flex flex-col gap-0.5 sm:gap-1 w-full mt-auto">
+                  {/* ป้ายสัดส่วนคะแนน X/X */}
+                  <span className={`text-[9px] sm:text-xs font-bold rounded py-0.5 sm:py-1 px-1 text-center block truncate ${statusBadgeClass}`}>
                     {displayCount}/{total}
                   </span>
+
+                  {/* ป้ายรอตรวจ */}
+                  {pendingReview > 0 && (
+                    <span className="text-[8px] sm:text-[10px] font-medium rounded py-0.5 sm:py-1 px-1 text-center bg-yellow-50 text-yellow-700 flex items-center justify-center gap-0.5 w-full leading-none whitespace-nowrap">
+                      {/* บนคอมจะแสดงไอคอนนาฬิกาขนาด size-3 เสมอ */}
+                      <Clock className="size-2 sm:size-3 max-[360px]:hidden shrink-0" />
+                      <span>รอตรวจ {pendingReview}</span>
+                    </span>
+                  )}
                 </div>
               )}
             </button>

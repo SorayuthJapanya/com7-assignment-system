@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateDailyReport } from "@/hooks/use-daily-report";
@@ -8,6 +9,8 @@ import { useUploadProfileImage } from "@/hooks/use-auth";
 import { ImagePlus, X, Loader2 } from "lucide-react";
 
 export default function ReportForm() {
+  const queryClient = useQueryClient();
+
   const [description, setDescription] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -15,7 +18,23 @@ export default function ReportForm() {
   const { mutateAsync: uploadImage, isPending: isUploading } = useUploadProfileImage();
   const { mutateAsync: createReport, isPending: isSubmitting } = useCreateDailyReport();
 
-  const today = new Date().toISOString().slice(0, 10);
+  // แปลงวันที่เป็นรูปแบบไทย
+  const formatThaiDate = (date: Date) => {
+    const thaiMonths = [
+      "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+      "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+    ];
+
+    const day = date.getDate();
+    const month = thaiMonths[date.getMonth()];
+    const year = date.getFullYear() + 543;
+
+    return `${day} ${month} ${year}`;
+  };
+
+  const today = new Date();
+  const thaiDate = formatThaiDate(today);
+  const todayDateKey = today.toISOString().slice(0, 10);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -39,10 +58,29 @@ export default function ReportForm() {
     }
 
     await createReport({
-      date: today,
+      date: todayDateKey,
       description: description.trim(),
       imageUrl,
     });
+
+    // Invalidate Queries แบบกว้างและปลอดภัย
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["calendar-summary"] }),
+      queryClient.invalidateQueries({ queryKey: ["daily-reports"] }),
+      queryClient.invalidateQueries({ queryKey: ["day-detail"] }),
+      queryClient.invalidateQueries({ queryKey: ["day-detail", todayDateKey] }),
+    ]);
+
+    // Predicate แก้ไขให้ return boolean เสมอ
+    queryClient.invalidateQueries({
+      predicate: (query) => {
+        const key = query.queryKey[0]?.toString() || "";
+        return key.includes("report") || key.includes("daily") || key.includes("calendar");
+      },
+    });
+
+    // รีเฟรชเฉพาะวันนี้เพิ่มเติม
+    queryClient.refetchQueries({ queryKey: ["day-detail", todayDateKey] });
 
     setDescription("");
     handleRemoveImage();
@@ -53,7 +91,9 @@ export default function ReportForm() {
   return (
     <div className="rounded-2xl border bg-card p-5 flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">ส่งรายงานวันนี้ ({today})</h3>
+        <h3 className="font-semibold">
+          ส่งรายงานวันนี้ ({thaiDate})
+        </h3>
       </div>
 
       <Textarea

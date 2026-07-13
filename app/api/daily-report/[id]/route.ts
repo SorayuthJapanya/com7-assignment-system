@@ -45,6 +45,8 @@ export async function PATCH(
         feedback: feedback ?? "",
         // เก็บ username ของผู้ตรวจ ไม่ใช่ UUID เพื่อให้แสดงผลได้ตรงๆ โดยไม่ต้อง join ทีหลัง
         reviewedBy: authUser.username,
+        // ไม่ต้องเพิ่ม field ใหม่ — ใช้ updatedAt ที่ Prisma อัปเดตให้อัตโนมัติทุกครั้งที่ update record นี้
+        // (PATCH endpoint นี้เป็นจุดเดียวที่แก้ record หลังสร้าง จึงใช้แทน "เวลาที่ตรวจ" ได้อย่างแม่นยำ)
       },
       include: {
         user: { select: { id: true, username: true, nickname: true, profileImage: true } },
