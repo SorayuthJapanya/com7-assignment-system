@@ -7,11 +7,11 @@ export interface IUser {
   profileImage?: string;
   totalScore?: number;
   isHidden?: boolean;        
-  hiddenAt?: string | null;  
-  createdAt: Date;
-  updatedAt?: Date;
+  hiddenAt?: Date | string | null;   
+  createdAt: Date | string;         
+  updatedAt?: Date | string;     
+  resetAt?: Date | string | null;    
 }
-
 export interface JWTPayload {
   userId: string;
   username: string;

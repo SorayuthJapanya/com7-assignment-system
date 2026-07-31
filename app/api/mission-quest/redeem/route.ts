@@ -248,8 +248,8 @@ export async function POST(request: NextRequest) {
         await tx.missionClaim.update({
           where: { id: existing.id },
           data: {
-            points: existing.points + rewardPoints, // สะสมแต้มของทุกรอบในเดือนนี้ไว้ในแถวเดียว
-            createdAt: now, // 🔑 รีเฟรชเวลา = จุดเริ่มนับรอบใหม่ (cycleStartOf จะอ่านค่านี้)
+            points: existing.points + rewardPoints,
+            claimedAt: now, 
           },
         });
       } else {

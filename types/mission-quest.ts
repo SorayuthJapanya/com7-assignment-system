@@ -58,34 +58,33 @@ export interface BonusBucketMeta {
 }
 
 // 🆕 1 แถว = 1 user พร้อมจำนวนครั้งสะสมของแต่ละ bucket ในเดือนนี้
-// 🆕 1 แถว = 1 user พร้อมจำนวนครั้งสะสม "ตลอดกาล" ของแต่ละ bucket (ตั้งแต่วันที่ track หรือวันที่ reset ล่าสุด)
 export interface BonusLeaderboardRow {
   rank: number;
-  userId: string;
+  userId?: string;        // 🔑 ปรับเป็น Optional เพื่อรองรับ mock data
   name: string;
   username: string;
   buckets: number[]; // length เท่ากับ BonusBucketMeta[] เรียงลำดับตรงกัน
   bucketEntries: BonusBucketEntry[][];
   total: number; // ผลรวมจำนวนครั้งทุก bucket
-  missionsDone: number; // จำนวนครั้งที่ claim mission สะสม
-  bonusEarned: number; // ส่วนโบนัส/เพนัลตี้จาก % ความเร็ว + mission claim (ติดลบได้)
-  totalPoints: number; // คะแนนรวมจากตาราง Score
+  missionsDone?: number; // 🔑 ปรับเป็น Optional
+  bonusEarned?: number;  // 🔑 ปรับเป็น Optional
+  totalPoints?: number;  // 🔑 ปรับเป็น Optional
 }
 
 export type BonusBucketEntry = {
-  id: string;
   assignmentId: string;
-  title: string;
   deadline: string;   // ISO string
   submitAt: string;   // ISO string
-  reward: number;
+  id?: string;        
+  title?: string;     
+  reward?: number;    
+  diffDays?: number;  
 };
-
 
 export interface BonusTableData {
   buckets: BonusBucketMeta[];
   leaderboard: BonusLeaderboardRow[];
-  cycleStart: string; // 🆕 ISO string — วันที่เริ่มนับสะสมของรอบปัจจุบัน (อัปเดตเมื่อ SuperAdmin กด Reset)
+  cycleStart?: string; // 🔑 ปรับเป็น Optional — ISO string วันที่เริ่มนับสะสมของรอบปัจจุบัน
 }
 
 export interface RewardBreakdownItem {
@@ -113,7 +112,7 @@ export interface MissionProgressChartPoint {
 export interface MissionQuestResponse {
   kpis: MissionQuestKpis;
   sections: MissionSectionData[];
-  bonusTable: BonusTableData; // 🆕 เปลี่ยนจาก BonusTableRow[] เป็น object
+  bonusTable: BonusTableData;
   summary: MissionQuestSummary;
   categoryChart: MissionCategoryChartPoint[];
   progressChart: MissionProgressChartPoint[];
