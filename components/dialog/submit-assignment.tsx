@@ -240,6 +240,12 @@ export default function SubmitAssignment({
       {previewSrc && (
         <Dialog open={fullscreen} onOpenChange={setFullscreen}>
           <DialogContent className="w-full max-h-[90vh] p-0 flex flex-col rounded-lg">
+            {/* DialogTitle จำเป็นสำหรับ accessibility (screen reader) — ซ่อนด้วย sr-only
+                เพราะกล่องนี้แค่โชว์ไฟล์เต็มจอ ไม่จำเป็นต้องมี title โผล่ให้เห็นบน UI */}
+            <DialogHeader className="sr-only">
+              <DialogTitle>ดูไฟล์งานที่ส่งแบบเต็มจอ</DialogTitle>
+              <DialogDescription>แสดงตัวอย่างไฟล์งานที่แนบแบบเต็มหน้าจอ</DialogDescription>
+            </DialogHeader>
             <div className="w-full h-auto rounded-lg flex-1 overflow-auto bg-muted flex items-center justify-center">
               {isPdf ? (
                 <iframe

@@ -22,7 +22,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../ui/collapsible";
-import { ChevronRight, Clock } from "lucide-react"; 
+import { ChevronRight, Clock } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useMemo, useEffect, useState } from "react";
 import { useAuth, useAuthUser } from "@/contexts/auth-context";
@@ -31,6 +31,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { useGetLevels } from "@/hooks/use-level";
 import { usePublicLeaderboard } from "@/hooks/use-leaderboard";
 import { ILevel } from "@/types/level";
+import type { Mission, MissionQuestResponse } from "@/types/mission-quest";
 
 // ─── Types & Constants ────────────────────────────────────────────────────────
 
@@ -39,10 +40,19 @@ interface AssignmentItem {
   deadline: string;
   status: "Approved" | "Rejected" | "Pending" | "In Progress";
   submissionUrl?: string;
+  submitAt?: string;   // 📌 เพิ่มฟิลด์รับวันที่ส่งงานจริง
+  updatedAt?: string;  // 📌 เพิ่มฟิลด์รับวันที่อัปเดตสถานะ
 }
 
-const CHALLENGE_TOTAL = 5;
-const CHALLENGE_XP = 300;
+// 🆕 Map progressColor (จาก Mission type) -> Tailwind class
+const PROGRESS_COLOR_MAP: Record<Mission["progressColor"], string> = {
+  teal: "bg-teal-400",
+  pink: "bg-pink-400",
+  blue: "bg-blue-400",
+  purple: "bg-purple-400",
+  gold: "bg-amber-400",
+  green: "bg-green-400",
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -76,34 +86,14 @@ function resolveLevel(score: number, levels: ILevel[]) {
   };
 }
 
-function getWeekStart(date = new Date()): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d;
-}
+// 🆕 หา Mission ที่ยังไม่ completed และมี progress % สูงที่สุด (ใกล้เสร็จที่สุด)
+function getClosestMission(missions: Mission[]): Mission | null {
+  const incomplete = missions.filter((m) => !m.isCompleted);
+  if (incomplete.length === 0) return null;
 
-function getCurrentWeekDays(): Date[] {
-  const monday = getWeekStart();
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    return d;
-  });
-}
-
-function calcWeeklyCompleted(assignments: AssignmentItem[]): number {
-  const weekStart = getWeekStart();
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 7);
-
-  return assignments.filter((a) => {
-    if (a.status !== "Approved") return false;
-    const dl = new Date(a.deadline);
-    return dl >= weekStart && dl < weekEnd;
-  }).length;
+  return incomplete.reduce((closest, m) =>
+    m.progressPct > closest.progressPct ? m : closest
+  );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -128,6 +118,10 @@ export default function AppSidebar() {
   const [mounted, setMounted] = useState(false);
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
 
+  // 🆕 State สำหรับ mission ที่ใกล้เสร็จที่สุด
+  const [closestMission, setClosestMission] = useState<Mission | null>(null);
+  const [missionsLoading, setMissionsLoading] = useState(true);
+
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
@@ -140,10 +134,24 @@ export default function AppSidebar() {
       .catch(() => { });
   }, [mounted]);
 
-  const weekDays = useMemo(() => getCurrentWeekDays(), []);
-  const weeklyCompleted = useMemo(() => calcWeeklyCompleted(assignments), [assignments]);
-  const challengeProgress = Math.min(weeklyCompleted, CHALLENGE_TOTAL);
-  const challengeDone = challengeProgress >= CHALLENGE_TOTAL;
+  // 🆕 ดึงข้อมูล mission-quest เฉพาะ role STAFF (ตาม API restriction) เพื่อหา mission ที่ใกล้เสร็จที่สุด
+  useEffect(() => {
+    if (!mounted) return;
+    if (authUser?.role !== "STAFF") {
+      setMissionsLoading(false);
+      return;
+    }
+
+    fetch("/api/mission-quest")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: MissionQuestResponse | null) => {
+        if (!data) return;
+        const allMissions = data.sections.flatMap((s) => s.missions);
+        setClosestMission(getClosestMission(allMissions));
+      })
+      .catch((err) => console.error("Failed to fetch missions:", err))
+      .finally(() => setMissionsLoading(false));
+  }, [mounted, authUser?.role]);
 
   const isActive = (url?: string) => {
     if (!url) return false;
@@ -166,12 +174,17 @@ export default function AppSidebar() {
           return true;
         }),
       }))
-      .filter((item) => {
+            .filter((item) => {
+        // ถ้า item ระบุทั้ง isStaffOnly และ isSuperAdmin พร้อมกัน = อนุญาตให้เห็นได้ทั้งสอง role นี้
+        if (item.isStaffOnly && item.isSuperAdmin) {
+          return authUser?.role === "STAFF" || isSuperAdmin;
+        }
         if (item.isSuperAdmin && !isSuperAdmin) return false;
         if (item.isAdmin && !isAdmin) return false;
+        if (item.isStaffOnly && (isSuperAdmin || isAdmin)) return false;
         return true;
       });
-  }, [isSuperAdmin, isAdmin, isIntern]);
+  }, [isSuperAdmin, isAdmin, isIntern, authUser?.role]);
 
   if (!mounted) return null;
 
@@ -356,38 +369,53 @@ export default function AppSidebar() {
       {/* ───── Footer ───── */}
       <SidebarFooter className="shrink-0 border-t border-sidebar-border bg-sidebar max-h-[45vh] overflow-y-auto p-0 gap-0">
 
-        {/* ───── WEEKLY CHALLENGE Card ───── */}
-        {!isIntern && (
-          <SidebarGroup className="px-3 pt-1 pb-2">
-            <div className={`rounded-xl border p-2.5 flex flex-col gap-1.5 ${challengeDone ? "bg-green-50 border-green-200" : "bg-yellow-50 border-yellow-100"}`}>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm">{challengeDone ? "🏆" : "🎯"}</span>
-                <span className={`text-[10px] font-bold tracking-wide uppercase ${challengeDone ? "text-green-700" : "text-yellow-700"}`}>
-                  Weekly Challenge
-                </span>
+          {/* ───── CLOSEST MISSION Card (แทนที่ Weekly Challenge เดิม) ───── */}
+          {authUser?.role === "STAFF" && !missionsLoading && closestMission && (
+            <SidebarGroup className="px-3 pt-1 pb-2">
+              <div className="rounded-xl border p-2.5 flex flex-col gap-1.5 bg-yellow-50 border-yellow-100">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm">{closestMission.emoji}</span>
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-yellow-700">
+                    Almost There!
+                  </span>
+                </div>
+                <p className="text-[10px] text-gray-700 leading-tight font-medium">
+                  {closestMission.name} · {closestMission.progressLabel}
+                </p>
+                <div className="w-full bg-gray-200 rounded-full h-1 overflow-hidden">
+                  <div
+                    className={`h-1 rounded-full transition-all duration-500 ${PROGRESS_COLOR_MAP[closestMission.progressColor]}`}
+                    style={{ width: `${closestMission.progressPct}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between leading-none">
+                  <span className="text-[10px] text-muted-foreground font-medium">
+                    {closestMission.progressPct}% complete
+                  </span>
+                  <span className="flex items-center gap-0.5 text-[10px] font-bold text-gray-700">
+                    🎁 +{closestMission.rewardPoints} pts
+                  </span>
+                </div>
               </div>
-              <p className="text-[10px] text-gray-700 leading-tight font-medium">
-                {challengeDone
-                  ? `Challenge completed! 🎉 (${challengeProgress}/${CHALLENGE_TOTAL})`
-                  : `Complete ${CHALLENGE_TOTAL} assignments this week (${challengeProgress}/${CHALLENGE_TOTAL})`}
-              </p>
-              <div className="w-full bg-gray-200 rounded-full h-1 overflow-hidden">
-                <div
-                  className={`h-1 rounded-full transition-all duration-500 ${challengeDone ? "bg-green-500" : "bg-orange-400"}`}
-                  style={{ width: `${(challengeProgress / CHALLENGE_TOTAL) * 100}%` }}
-                />
+            </SidebarGroup>
+          )}
+
+          {/* ───── Fallback: ทำ mission ครบทุกอันแล้ว ───── */}
+          {authUser?.role === "STAFF" && !missionsLoading && !closestMission && (
+            <SidebarGroup className="px-3 pt-1 pb-2">
+              <div className="rounded-xl border p-2.5 flex flex-col gap-1.5 bg-green-50 border-green-200">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm">🏆</span>
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-green-700">
+                    All Missions Done!
+                  </span>
+                </div>
+                <p className="text-[10px] text-gray-700 leading-tight font-medium">
+                  เก่งมาก! ทำภารกิจครบทุกอันแล้ว 🎉
+                </p>
               </div>
-              <div className="flex items-center justify-between leading-none">
-                <span className="text-[10px] text-muted-foreground font-medium">
-                  {challengeProgress} / {CHALLENGE_TOTAL}
-                </span>
-                <span className={`flex items-center gap-0.5 text-[10px] font-bold ${challengeDone ? "text-green-700" : "text-gray-700"}`}>
-                  🎁 +{CHALLENGE_XP} XP
-                </span>
-              </div>
-            </div>
-          </SidebarGroup>
-        )}
+            </SidebarGroup>
+          )}
 
       </SidebarFooter>
 

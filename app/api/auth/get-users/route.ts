@@ -13,11 +13,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get query parameters
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
+    const includeHidden = searchParams.get("includeHidden") === "true";
 
-    const whereClause = search
+    const userRole = authResult.user?.role;
+    const canSeeHidden =
+      includeHidden && !!userRole && ["ADMIN", "SUPER_ADMIN"].includes(userRole);
+
+    const searchClause = search
       ? {
           OR: [
             { username: { contains: search, mode: "insensitive" as const } },
@@ -26,6 +30,11 @@ export async function GET(request: NextRequest) {
           ],
         }
       : {};
+
+    const whereClause = {
+      ...searchClause,
+      ...(canSeeHidden ? {} : { isHidden: false }),
+    };
 
     const users = await prisma.user.findMany({
       where: whereClause,
@@ -40,6 +49,8 @@ export async function GET(request: NextRequest) {
         role: true,
         resetAt: true,
         createdAt: true,
+        isHidden: true,
+        hiddenAt: true,
         scores: {
           select: { score: true, createdAt: true },
         },

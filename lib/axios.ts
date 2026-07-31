@@ -8,3 +8,10 @@ export const axiosInstance = axios.create({
   withCredentials: true,
 });
 
+
+axiosInstance.interceptors.request.use((config) => {
+  if (config.data instanceof FormData) {
+    delete config.headers["Content-Type"];
+  }
+  return config;
+});

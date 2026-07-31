@@ -6,6 +6,7 @@ import {
   logout,
   register,
   resetPassword,
+  toggleUserVisibility,
   updateUser,
   uploadProfileImage,
 } from "@/services/auth-services";
@@ -57,6 +58,10 @@ export const useRegister = () => {
     mutationFn: register,
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: ["users"], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["public-leaderboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-leaderboard"] });
+
       await Swal.fire({
         icon: "success",
         title: res.message || "Registration Successful",
@@ -97,7 +102,7 @@ export const useLogout = () => {
           showConfirmButton: false,
         });
       },
-    },
+    }
   );
 };
 
@@ -111,6 +116,10 @@ export const useAddUser = () => {
     mutationFn: addUser,
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: ["users"], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["public-leaderboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-leaderboard"] });
+
       await Swal.fire({
         icon: "success",
         title: res.message || "Add User Successful",
@@ -131,10 +140,16 @@ export const useAddUser = () => {
   });
 };
 
-export const useGetUsers = ({ search }: { search?: string }) => {
+export const useGetUsers = ({
+  search,
+  includeHidden,
+}: {
+  search?: string;
+  includeHidden?: boolean;
+}) => {
   return useQuery<{ data: IUser[] }>({
-    queryKey: ["users", search],
-    queryFn: () => getUsers(search),
+    queryKey: ["users", search, includeHidden],
+    queryFn: () => getUsers(search, includeHidden),
   });
 };
 
@@ -147,8 +162,11 @@ export const useUpdateUser = () => {
   >({
     mutationFn: ({ id, data }) => updateUser(id, data),
     onSuccess: async (res) => {
-      // บังคับรีดึงข้อมูลย่อยทั้งหมดที่ผูกกับคำว่า "users" และรอให้ดึงเสร็จก่อนวิ่งไปขั้นตอนถัดไป
+      /* สั่งล้าง Cache ของทั้งระบบให้ดึงข้อมูลใหม่แบบเรียลไทม์ */
       await queryClient.invalidateQueries({ queryKey: ["users"], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["public-leaderboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-leaderboard"] });
 
       Swal.fire({
         icon: "success",
@@ -187,7 +205,12 @@ export const useDeleteUser = () => {
   >({
     mutationFn: ({ id }) => deleteUser(id),
     onSuccess: async (res) => {
+      /* สั่งล้าง Cache ของทั้งระบบให้ดึงข้อมูลใหม่แบบเรียลไทม์ */
       await queryClient.invalidateQueries({ queryKey: ["users"], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["public-leaderboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-leaderboard"] });
+
       Swal.fire({
         icon: "success",
         title: res.message || "User deleted successfully",
@@ -219,6 +242,40 @@ export const useResetPassword = () => {
       Swal.fire({
         icon: "error",
         title: "Reset Password Failed",
+        text: error?.response?.data?.error || "Something went wrong",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    },
+  });
+};
+
+export const useToggleUserVisibility = () => {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { message: string; data: IUser },
+    AxiosError<AxiosErrorResponse>,
+    { id: string }
+  >({
+    mutationFn: ({ id }) => toggleUserVisibility(id),
+    onSuccess: async (res) => {
+      /* สั่งล้าง Cache ของทั้งระบบ เพื่อให้หน้า Dashboard / Leaderboard อัปเดตทันทีเมื่อกดซ่อน */
+      await queryClient.invalidateQueries({ queryKey: ["users"], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["public-leaderboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-leaderboard"] });
+
+      Swal.fire({
+        icon: "success",
+        title: res.message,
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error) => {
+      Swal.fire({
+        icon: "error",
+        title: "Action Failed",
         text: error?.response?.data?.error || "Something went wrong",
         timer: 2000,
         showConfirmButton: false,

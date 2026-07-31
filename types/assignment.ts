@@ -32,6 +32,8 @@ export interface IAssignment {
   createdAt: Date;
   updatedAt: Date;
   username: string;
+  earlyBirdModifier?: number | null;
+  adjustedScore?: number | null;
 }
 
 export interface GetAssignmentsResponse {

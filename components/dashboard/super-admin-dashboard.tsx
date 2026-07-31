@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   TrendingUp,
   Clock,
@@ -26,6 +26,7 @@ import {
   Tooltip,
 } from "recharts";
 import KpiCard from "../card/kpi-card";
+import { CustomFilterDropdown } from "./custom-filter-dropdown";
 import type {
   AdminDashboardResponse,
   UserAssignmentStatus,
@@ -37,6 +38,8 @@ import type {
 
 interface CustomUserStatus extends UserAssignmentStatus {
   notSubmit?: number;
+  role?: string;
+  lateCount?: number;
 }
 
 interface SuperAdminDashboardProps {
@@ -44,7 +47,6 @@ interface SuperAdminDashboardProps {
   month: number | null;
 }
 
-// ─── Colour palettes ────────────────────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
   Approved: "#22c55e",
   "In Progress": "#3b82f6",
@@ -76,7 +78,6 @@ const MONTH_NAMES_EN = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-// ─── Sub-components ─────────────────────────────────────────────────────────
 function SectionCard({
   title,
   headerRight,
@@ -109,7 +110,6 @@ function LevelBadge({ level }: { level: string }) {
   );
 }
 
-// ─── Workload Modal ──────────────────────────────────────────────────────────
 function WorkloadModal({
   isOpen,
   onClose,
@@ -177,21 +177,22 @@ function WorkloadModal({
   );
 }
 
-// ─── Overdue Modal ───────────────────────────────────────────────────────────
 function OverdueModal({
   isOpen,
   onClose,
   overdueData,
+  filterTitle,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  overdueData: UserAssignmentStatus[];
+  overdueData: CustomUserStatus[];
+  filterTitle: string;
 }) {
   if (!isOpen) return null;
 
   const sortedOverdue = [...overdueData]
-    .sort((a, b) => (b.rejected ?? 0) - (a.rejected ?? 0))
-    .filter(u => (u.rejected ?? 0) > 0);
+    .filter(u => (u.lateCount ?? 0) > 0)
+    .sort((a, b) => (b.lateCount ?? 0) - (a.lateCount ?? 0));
 
   return (
     <div style={{
@@ -209,7 +210,9 @@ function OverdueModal({
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <AlertTriangle size={22} color="#ef4444" />
-            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#0f172a" }}>Overdue Alert</h3>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#0f172a" }}>
+              Overdue Alert ({filterTitle})
+            </h3>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
             <X size={20} color="#64748b" />
@@ -236,7 +239,7 @@ function OverdueModal({
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: "#ef4444" }}>{u.rejected}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "#ef4444" }}>{u.lateCount}</div>
                     <div style={{ fontSize: 12, color: "#94a3b8" }}>งาน</div>
                   </div>
                 </div>
@@ -244,7 +247,7 @@ function OverdueModal({
             </div>
           ) : (
             <div style={{ textAlign: "center", padding: "60px 20px", color: "#94a3b8" }}>
-              ไม่มีงานที่ overdue ในขณะนี้
+              ไม่มีงานที่ Overdue ในช่วงเวลานี้
             </div>
           )}
         </div>
@@ -259,30 +262,6 @@ function OverdueModal({
   );
 }
 
-// ─── Workload Distribution Section (Canvas Donut + Tooltip) ─────────────────
-interface TooltipState {
-  visible: boolean;
-  x: number;
-  y: number;
-  name: string;
-  count: number;
-  share: string;
-  total: number;
-  color: string;
-}
-
-interface Segment {
-  a0: number;
-  a1: number;
-  ro: number;
-  ri: number;
-  color: string;
-  name: string;
-  value: number;
-  pct: number;
-  total: number;
-}
-
 function WorkloadDistributionSection({
   userStatusData,
 }: {
@@ -293,31 +272,48 @@ function WorkloadDistributionSection({
   >("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hoveredIdx, setHoveredIdx] = useState(-1);
-  const [tooltip, setTooltip] = useState<TooltipState>({
-    visible: false, x: 0, y: 0, name: "", count: 0, share: "", total: 0, color: "",
-  });
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const segmentsRef = useRef<Segment[]>([]);
-
-  const SIZE = 160;
-  const CX = SIZE / 2, CY = SIZE / 2;
-  const RO = SIZE * 0.46, RI = SIZE * 0.28;
-  const GAP = 0.025;
+  const BAR_GRADIENTS = [
+    "linear-gradient(90deg,#6366f1,#8b5cf6)",
+    "linear-gradient(90deg,#22c55e,#14b8a6)",
+    "linear-gradient(90deg,#f59e0b,#f97316)",
+  ];
+  const BAR_DEFAULT = "#cbd5e1";
 
   const finalChartData = useMemo(() => {
-    const mapped = userStatusData.map(u => {
+    let mapped = userStatusData.map(u => {
       let value = 0;
       if (workloadFilter === "submitted") value = u.submitted ?? 0;
       else if (workloadFilter === "pending") value = u.pending ?? 0;
       else if (workloadFilter === "approved") value = u.approved ?? 0;
       else value = (u.approved ?? 0) + (u.pending ?? 0) + (u.rejected ?? 0) + (u.notSubmit ?? 0);
-      return { name: u.nickname || u.username, value };
+
+      return { 
+        name: u.nickname || u.username, 
+        value, 
+        role: u.role 
+      };
     });
 
-    if (workloadFilter === "top5") return [...mapped].sort((a, b) => b.value - a.value).slice(0, 5);
-    if (workloadFilter === "bottom5") return [...mapped].sort((a, b) => a.value - b.value).slice(0, 5);
+    mapped = mapped.filter(d => {
+      if (d.value === 0) return false;
+      if (d.role === "INTERN") return false;
+      if (d.role === "SUPER_ADMIN" || d.role === "SuperAdmin") return false;
+      return true;
+    });
+
+    if (workloadFilter === "top5") {
+      return [...mapped]
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5);
+    }
+
+    if (workloadFilter === "bottom5") {
+      return [...mapped]
+        .sort((a, b) => a.value - b.value)
+        .slice(0, 5);
+    }
+
     return mapped.sort((a, b) => b.value - a.value);
   }, [userStatusData, workloadFilter]);
 
@@ -326,7 +322,16 @@ function WorkloadDistributionSection({
     [finalChartData]
   );
 
-  const displayedList = useMemo(() => finalChartData.slice(0, 3), [finalChartData]);
+  const maxVal = finalChartData[0]?.value || 1;
+  const activeUsers = finalChartData;
+  const avgLoad = activeUsers.length > 0
+    ? Math.round(activeUsers.reduce((s, d) => s + d.value, 0) / activeUsers.length)
+    : 0;
+  const maxLoad = finalChartData[0]?.value ?? 0;
+  const overloadedCount = activeUsers.filter(d => d.value > avgLoad * 1.5).length;
+  const isImbalanced = overloadedCount > 0;
+
+  const displayedList = useMemo(() => finalChartData.slice(0, 6), [finalChartData]);
 
   const getFilterLabel = () => {
     const map: Record<string, string> = {
@@ -336,242 +341,103 @@ function WorkloadDistributionSection({
     return map[workloadFilter] ?? "งานทั้งหมด";
   };
 
-  const drawDonut = useCallback((hovered: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, SIZE * dpr, SIZE * dpr);
-    segmentsRef.current = [];
-
-    if (workloadTotal === 0) {
-      ctx.beginPath();
-      ctx.arc(CX * dpr, CY * dpr, ((RO + RI) / 2) * dpr, 0, Math.PI * 2);
-      ctx.strokeStyle = "#e2e8f0";
-      ctx.lineWidth = (RO - RI) * dpr;
-      ctx.stroke();
-      // Center text
-      ctx.fillStyle = "#0f172a";
-      ctx.font = `700 ${SIZE * 0.14 * dpr}px Inter,-apple-system,sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("0", CX * dpr, (CY - 6) * dpr);
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = `400 ${SIZE * 0.075 * dpr}px Inter,-apple-system,sans-serif`;
-      ctx.fillText("งาน", CX * dpr, (CY + SIZE * 0.1) * dpr);
-      return;
-    }
-
-    let angle = -Math.PI / 2;
-    finalChartData.forEach((d, i) => {
-      if (d.value <= 0) return;
-      const slice = (d.value / workloadTotal) * Math.PI * 2;
-      const a0 = angle + GAP / 2;
-      const a1 = angle + slice - GAP / 2;
-      const isH = i === hovered;
-      const ro = (isH ? RO + 7 : RO) * dpr;
-      const ri = (isH ? RI - 2 : RI) * dpr;
-
-      ctx.beginPath();
-      ctx.arc(CX * dpr, CY * dpr, ro, a0, a1);
-      ctx.arc(CX * dpr, CY * dpr, ri, a1, a0, true);
-      ctx.closePath();
-      ctx.fillStyle = CATEGORY_COLORS[i % CATEGORY_COLORS.length] + (isH ? "" : "cc");
-      ctx.fill();
-
-      segmentsRef.current.push({
-        a0: angle, a1: angle + slice,
-        ro: isH ? RO + 7 : RO, ri: isH ? RI - 2 : RI,
-        color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
-        name: d.name, value: d.value,
-        pct: Math.round((d.value / workloadTotal) * 1000) / 10,
-        total: workloadTotal,
-      });
-      angle += slice;
-    });
-
-    // Center text
-    ctx.fillStyle = "#0f172a";
-    ctx.font = `700 ${SIZE * 0.14 * dpr}px Inter,-apple-system,sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(String(workloadTotal), CX * dpr, (CY - 6) * dpr);
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = `400 ${SIZE * 0.075 * dpr}px Inter,-apple-system,sans-serif`;
-    ctx.fillText("งาน", CX * dpr, (CY + SIZE * 0.1) * dpr);
-  }, [finalChartData, workloadTotal]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = SIZE * dpr;
-    canvas.height = SIZE * dpr;
-    canvas.style.width = `${SIZE}px`;
-    canvas.style.height = `${SIZE}px`;
-    drawDonut(hoveredIdx);
-  }, [drawDonut, hoveredIdx]);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    const wrap = wrapRef.current;
-    if (!canvas || !wrap) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left - CX;
-    const my = e.clientY - rect.top - CY;
-    const dist = Math.sqrt(mx * mx + my * my);
-    let angle = Math.atan2(my, mx) + Math.PI / 2;
-    if (angle < 0) angle += Math.PI * 2;
-
-    let found = -1;
-    segmentsRef.current.forEach((seg, i) => {
-      let a0 = seg.a0 + Math.PI / 2;
-      let a1 = seg.a1 + Math.PI / 2;
-      if (a0 < 0) a0 += Math.PI * 2;
-      if (a1 < 0) a1 += Math.PI * 2;
-      const inArc = a0 > a1 ? (angle >= a0 || angle <= a1) : (angle >= a0 && angle <= a1);
-      if (inArc && dist >= seg.ri && dist <= seg.ro + 8) found = i;
-    });
-
-    if (found !== -1) {
-      const seg = segmentsRef.current[found];
-      const wrapRect = wrap.getBoundingClientRect();
-      const ttW = 170;
-      let tx = e.clientX - wrapRect.left + 14;
-      let ty = e.clientY - wrapRect.top - 50;
-      if (tx + ttW > wrapRect.width + 80) tx = e.clientX - wrapRect.left - ttW - 10;
-      ty = Math.max(0, ty);
-
-      setHoveredIdx(found);
-      setTooltip({
-        visible: true, x: tx, y: ty,
-        name: seg.name, count: seg.value,
-        share: `${seg.pct}%`, total: seg.total,
-        color: seg.color,
-      });
-    } else {
-      setHoveredIdx(-1);
-      setTooltip(t => ({ ...t, visible: false }));
-    }
-  }, []);
-
-  const handleMouseLeave = useCallback(() => {
-    setHoveredIdx(-1);
-    setTooltip(t => ({ ...t, visible: false }));
-  }, []);
-
-  const selectStyle: React.CSSProperties = {
-    width: "100%", fontSize: 13, fontWeight: 600, color: "#475569",
-    border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "8px 12px",
-    outline: "none", backgroundColor: "#fff", cursor: "pointer", marginBottom: 16,
-    boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-  };
-
   return (
     <SectionCard title="Workload Distribution by User">
-      {/* Dropdown */}
-      <select
-        value={workloadFilter}
-        onChange={e => setWorkloadFilter(e.target.value as any)}
-        style={selectStyle}
-      >
-        <option value="all">แสดงข้อมูลบุคคลทั้งหมด</option>
-        <option value="submitted">สถานะ Submitted</option>
-        <option value="pending">สถานะ Pending</option>
-        <option value="approved">Status Approved</option>
-        <option value="top5">คนที่ได้งานเยอะที่สุด (Top 5)</option>
-        <option value="bottom5">คนที่ได้งานน้อยที่สุด (Bottom 5)</option>
-      </select>
+      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 24 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <CustomFilterDropdown value={workloadFilter} onChange={setWorkloadFilter} />
 
-      {/* Chart + Legend */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        {/* Canvas Donut */}
-        <div ref={wrapRef} style={{ position: "relative", flexShrink: 0 }}>
-          <canvas
-            ref={canvasRef}
-            style={{ display: "block", cursor: "crosshair" }}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
-          />
-
-          {/* Tooltip */}
-          {tooltip.visible && (
-            <div style={{
-              position: "absolute", left: tooltip.x, top: tooltip.y,
-              background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10,
-              padding: "10px 14px", minWidth: 165, pointerEvents: "none",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.10)", zIndex: 50,
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: tooltip.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{tooltip.name}</span>
-              </div>
-              {[
-                { label: "Count", val: `${tooltip.count} งาน` },
-                { label: "Share", val: tooltip.share },
-                { label: "Total", val: `${tooltip.total} งาน` },
-              ].map(row => (
-                <div key={row.label} style={{ display: "flex", justifyContent: "space-between", gap: 20, fontSize: 12, marginBottom: 3 }}>
-                  <span style={{ color: "#94a3b8" }}>{row.label}</span>
-                  <span style={{ color: "#0f172a", fontWeight: 600 }}>{row.val}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <div style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 12px" }}>
+            <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>เฉลี่ย/คน</p>
+            <p style={{ margin: "3px 0 0", fontSize: 18, fontWeight: 700, color: "#0f172a" }}>
+              {avgLoad} <span style={{ fontSize: 11, fontWeight: 400, color: "#94a3b8" }}>งาน</span>
+            </p>
+          </div>
+          <div style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 12px" }}>
+            <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>ภาระงานสูงสุด</p>
+            <p style={{ margin: "3px 0 0", fontSize: 18, fontWeight: 700, color: "#6366f1" }}>
+              {maxLoad} <span style={{ fontSize: 11, fontWeight: 400, color: "#94a3b8" }}>งาน</span>
+            </p>
+          </div>
+          <div style={{ background: isImbalanced ? "#eff6ff" : "#f8fafc", borderRadius: 10, padding: "10px 12px" }}>
+            <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>ผู้มีงานเกินภาระ</p>
+            <p style={{ margin: "3px 0 0", fontSize: 18, fontWeight: 700, color: isImbalanced ? "#2563eb" : "#0f172a" }}>
+              {overloadedCount} <span style={{ fontSize: 11, fontWeight: 400, color: "#94a3b8" }}>คน</span>
+            </p>
+          </div>
         </div>
 
-        {/* Legend — top 3 */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 0, minWidth: 0 }}>
-          {displayedList.map((d, i) => {
-            const pct = workloadTotal > 0 ? Math.round((d.value / workloadTotal) * 100) : 0;
-            return (
-              <div
-                key={d.name}
-                style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "6px 6px", borderRadius: 6, cursor: "pointer",
-                  borderBottom: i < displayedList.length - 1 ? "0.5px solid #f1f5f9" : "none",
-                  background: hoveredIdx === i ? "#f8fafc" : "transparent",
-                  transition: "background .12s",
-                }}
-                onMouseEnter={() => setHoveredIdx(i)}
-                onMouseLeave={() => setHoveredIdx(-1)}
-              >
-                <span style={{
-                  width: 8, height: 8, borderRadius: "50%",
-                  background: workloadTotal > 0 ? CATEGORY_COLORS[i % CATEGORY_COLORS.length] : "#cbd5e1",
-                  flexShrink: 0,
-                }} />
-                <span style={{
-                  fontSize: 12, color: "#475569", flex: 1,
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>
-                  {d.name}
-                </span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", flexShrink: 0 }}>{d.value}</span>
-                <span style={{ fontSize: 11, color: "#94a3b8", minWidth: 34, textAlign: "right", flexShrink: 0 }}>
-                  {pct}%
-                </span>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {displayedList.length === 0 && (
+              <div style={{ textAlign: "center", padding: "24px 0", color: "#94a3b8", fontSize: 12 }}>
+                ไม่มีข้อมูล
               </div>
-            );
-          })}
+            )}
+            {displayedList.map((d, i) => {
+              const pct = workloadTotal > 0 ? Math.round((d.value / workloadTotal) * 100) : 0;
+              const widthPct = Math.round((d.value / maxVal) * 100);
+              const gradient = i < 3 ? BAR_GRADIENTS[i] : undefined;
+              const isHovered = hoveredIdx === i;
+              return (
+                <div
+                  key={d.name}
+                  onMouseEnter={() => setHoveredIdx(i)}
+                  onMouseLeave={() => setHoveredIdx(-1)}
+                  style={{ display: "flex", alignItems: "center", gap: 10, cursor: "default" }}
+                >
+                  <span
+                    style={{
+                      width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 10, fontWeight: 700, color: i < 3 ? "#fff" : "#94a3b8",
+                      background: i < 3 ? gradient : "#f1f5f9",
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 12.5, fontWeight: 600, color: "#334155", width: 100, flexShrink: 0,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}
+                  >
+                    {d.name}
+                  </span>
+                  <div style={{ flex: 1, background: "#f1f5f9", borderRadius: 999, height: 16, position: "relative", overflow: "hidden" }}>
+                    <div
+                      style={{
+                        width: `${widthPct}%`, height: "100%", borderRadius: 999,
+                        background: i < 3 ? gradient : BAR_DEFAULT,
+                        transition: "width .35s ease, opacity .15s",
+                        opacity: isHovered ? 1 : 0.92,
+                      }}
+                    />
+                  </div>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#0f172a", width: 30, textAlign: "right", flexShrink: 0 }}>
+                    {d.value}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#94a3b8", width: 32, textAlign: "right", flexShrink: 0 }}>
+                    {pct}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
 
-          {/* View all button */}
-          {finalChartData.length > 3 && (
+          {finalChartData.length > 6 && (
             <button
               onClick={() => setIsModalOpen(true)}
               style={{
-                marginTop: 8, background: "#f8fafc", border: "1px solid #e2e8f0",
-                borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600,
-                color: "#475569", padding: "7px 10px",
+                marginTop: 14, border: "none", borderRadius: 12, cursor: "pointer",
+                fontSize: 12, fontWeight: 700, color: "#fff", padding: "9px 12px",
                 display: "flex", alignItems: "center", gap: 6, width: "100%",
-                transition: "background .12s",
+                background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                boxShadow: "0 4px 14px -4px rgba(99,102,241,0.5)",
+                transition: "transform .12s",
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#f1f5f9")}
-              onMouseLeave={e => (e.currentTarget.style.background = "#f8fafc")}
+              onMouseEnter={e => (e.currentTarget.style.transform = "translateY(-1px)")}
+              onMouseLeave={e => (e.currentTarget.style.transform = "translateY(0)")}
             >
               <Users size={13} />
               ดูทั้งหมด {finalChartData.length} คน
@@ -591,13 +457,18 @@ function WorkloadDistributionSection({
   );
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
 export default function SuperAdminDashboard({
   year = null,
   month = null,
 }: SuperAdminDashboardProps) {
+  // 1. Data หลักสำหรับ Dashboard (KPIs, Charts, Workload) -> ผูกแค่ year/month
   const [data, setData] = useState<AdminDashboardResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 2. Data เฉพาะของ Leaderboard & Overdue Alert -> ผูกกับ leaderboardFilter
+  const [leaderboardData, setLeaderboardData] = useState<AdminDashboardResponse | null>(null);
+  const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(false);
+
   const [leaderboardFilter, setLeaderboardFilter] = useState<"All Time" | "Monthly" | "Weekly">("All Time");
   const [isMobile, setIsMobile] = useState(false);
   const [showOverdueModal, setShowOverdueModal] = useState(false);
@@ -611,8 +482,9 @@ export default function SuperAdminDashboard({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // 📌 ชุดที่ 1: ดึงข้อมูลภาพรวมของ Dashboard (ไม่ขึ้นกับ leaderboardFilter)
   useEffect(() => {
-    const init = async () => {
+    const fetchMainData = async () => {
       setIsLoading(true);
       try {
         const params = new URLSearchParams();
@@ -622,87 +494,131 @@ export default function SuperAdminDashboard({
         const res = await fetch(`/api/assignment/dashboard/admin?${params}`);
         if (res.ok) {
           setData(await res.json());
-        } else {
-          setData({
-            role: "SUPER_ADMIN",
-            period: { year, month },
-            kpis: { totalAssignments: 0, totalSubmitted: 0, totalApproved: 0, averageScore: 0, lateSubmissions: 0 },
-            charts: {
-              monthlyTrend: { title: "Completion Rate Trend", type: "line", data: [] },
-              statusDistribution: { title: "Assignment Status", type: "pie", data: [] },
-              averageScoreByMonth: { title: "Avg Score Trend", type: "bar", data: [] },
-              userAssignmentStatus: { title: "User Assignment Status", type: "bar", data: [] },
-              userScoreSummary: { title: "User Score Summary", type: "table", data: [] },
-            },
-          } as unknown as AdminDashboardResponse);
         }
       } catch (err) {
-        console.error("Dashboard Fetch Error:", err);
+        console.error("Dashboard Main Fetch Error:", err);
       } finally {
         setIsLoading(false);
       }
     };
-    init();
-  }, [year, month]);
+    fetchMainData();
+  }, [year ?? "", month ?? ""]);
 
-  if (isLoading) {
-    return (
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4,1fr)", gap: 14, padding: 24 }}>
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} style={{ height: 96, borderRadius: 16, background: "#f1f5f9", animation: "pulse 1.5s infinite" }} />
-        ))}
-      </div>
-    );
-  }
+  // 📌 ชุดที่ 2: ดึงข้อมูลเฉพาะของ Leaderboard & Overdue (เปลี่ยนตาม Dropdown)
+  useEffect(() => {
+    const fetchLeaderboardData = async () => {
+      setIsLeaderboardLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (year) params.set("year", String(year));
+        if (month) params.set("month", String(month));
 
+        const filterParam =
+          leaderboardFilter === "Monthly"
+            ? "monthly"
+            : leaderboardFilter === "Weekly"
+              ? "weekly"
+              : "all";
+
+        params.set("filter", filterParam);
+
+        const res = await fetch(`/api/assignment/dashboard/admin?${params}`);
+        if (res.ok) {
+          setLeaderboardData(await res.json());
+        }
+      } catch (err) {
+        console.error("Leaderboard Fetch Error:", err);
+      } finally {
+        setIsLeaderboardLoading(false);
+      }
+    };
+    fetchLeaderboardData();
+  }, [year ?? "", month ?? "", leaderboardFilter]);
+
+  // Data สำหรับ KPI / Chart หลัก
   const kpis = data?.kpis;
   const charts = data?.charts;
+
+  const monthlyTrendData = (charts?.monthlyTrend?.data as MonthlyTrend[]) || [];
+  const statusDistData = (charts?.statusDistribution?.data as StatusDistribution[]) || [];
+  const scoreByMonthData = (charts?.averageScoreByMonth?.data as AverageScoreByMonth[]) || [];
+  const rawUserStatusData = (charts?.userAssignmentStatus?.data as CustomUserStatus[]) || [];
+
+  const userStatusData = useMemo(() => {
+    return rawUserStatusData.filter(u => {
+      const role = u.role;
+      return role !== "SUPER_ADMIN" && role !== "SuperAdmin" && role !== "INTERN";
+    });
+  }, [rawUserStatusData]);
+
+  // Data สำหรับ Leaderboard / Overdue Alert (คำนวณจาก leaderboardData ชุดใหม่)
+  const rawLeaderboardScoreData = (leaderboardData?.charts?.userScoreSummary?.data as UserScoreSummary[]) || [];
+  const rawLeaderboardStatusData = (leaderboardData?.charts?.userAssignmentStatus?.data as CustomUserStatus[]) || [];
+
+  const lbUserScoreData = useMemo(() => {
+    return rawLeaderboardScoreData.filter(u => {
+      const role = (u as any).role;
+      return role !== "SUPER_ADMIN" && role !== "SuperAdmin" && role !== "INTERN";
+    });
+  }, [rawLeaderboardScoreData]);
+
+  const lbUserStatusData = useMemo(() => {
+    return rawLeaderboardStatusData.filter(u => {
+      const role = u.role;
+      return role !== "SUPER_ADMIN" && role !== "SuperAdmin" && role !== "INTERN";
+    });
+  }, [rawLeaderboardStatusData]);
+
+  const leaderboardRows = useMemo(() => {
+    const list = [...lbUserScoreData];
+    list.sort((a, b) => b.totalScore - a.totalScore);
+
+    return list.map((u, i) => {
+      const status = lbUserStatusData.find(s => s.username === u.username);
+      const total = (status?.submitted ?? 0) + (status?.pending ?? 0);
+      const completionPct = total > 0 ? Math.round(((status?.approved ?? 0) / total) * 100) : 0;
+      let calculatedLevel = "Beginner";
+      if (u.totalScore >= 2000) calculatedLevel = "Elite";
+      else if (u.totalScore >= 1500) calculatedLevel = "Expert";
+      else if (u.totalScore >= 1000) calculatedLevel = "Pro";
+
+      return {
+        rank: i + 1, nickname: u.nickname, level: calculatedLevel,
+        totalPoints: u.totalScore,
+        avgScore: u.assignmentCount > 0 ? Math.round(u.totalScore / u.assignmentCount) : 0,
+        completionRate: completionPct, overdue: status?.lateCount ?? 0,
+      };
+    }).slice(0, 5);
+  }, [lbUserScoreData, lbUserStatusData]);
+
+  const topPerformers = useMemo(() => {
+    const list = [...lbUserScoreData];
+    list.sort((a, b) => b.totalScore - a.totalScore);
+    return list.slice(0, 3);
+  }, [lbUserScoreData]);
+
+  const overdueAlerts = useMemo(() => {
+    return [...lbUserStatusData]
+      .filter(u => (u.lateCount ?? 0) > 0)
+      .sort((a, b) => (b.lateCount ?? 0) - (a.lateCount ?? 0))
+      .slice(0, 3);
+  }, [lbUserStatusData]);
 
   const completionRate =
     kpis && kpis.totalAssignments > 0
       ? Math.round((kpis.totalSubmitted / kpis.totalAssignments) * 100)
       : 0;
 
-  const monthlyTrendData = (charts?.monthlyTrend?.data as MonthlyTrend[]) || [];
-  const statusDistData = (charts?.statusDistribution?.data as StatusDistribution[]) || [];
-  const scoreByMonthData = (charts?.averageScoreByMonth?.data as AverageScoreByMonth[]) || [];
-  const userStatusData = (charts?.userAssignmentStatus?.data as CustomUserStatus[]) || [];
-  const userScoreData = (charts?.userScoreSummary?.data as UserScoreSummary[]) || [];
-
   const totalDonut = statusDistData.reduce((s, d) => s + d.value, 0);
 
-  let processedScoreData = [...(userScoreData || [])];
-  processedScoreData.sort((a, b) => b.totalScore - a.totalScore);
-
-  const leaderboardRows = processedScoreData.map((u, i) => {
-    const status = userStatusData.find(s => s.username === u.username);
-    const total = (status?.submitted ?? 0) + (status?.pending ?? 0);
-    const completionPct = total > 0 ? Math.round(((status?.approved ?? 0) / total) * 100) : 0;
-    let calculatedLevel = "Beginner";
-    if (u.totalScore >= 2000) calculatedLevel = "Elite";
-    else if (u.totalScore >= 1500) calculatedLevel = "Expert";
-    else if (u.totalScore >= 1000) calculatedLevel = "Pro";
-    return {
-      rank: i + 1, nickname: u.nickname, level: calculatedLevel,
-      totalPoints: u.totalScore,
-      avgScore: u.assignmentCount > 0 ? Math.round(u.totalScore / u.assignmentCount) : 0,
-      completionRate: completionPct, overdue: status?.rejected ?? 0,
-    };
-  }).slice(0, 5);
-
-  const topPerformers = [...processedScoreData].slice(0, 3);
-
-  const overdueAlerts = [...userStatusData]
-    .filter(u => (u.rejected ?? 0) > 0)
-    .sort((a, b) => (b.rejected ?? 0) - (a.rejected ?? 0))
-    .slice(0, 3);
-
-  const bestCompletionUser = [...userStatusData]
-    .map(u => {
-      const total = (u.submitted ?? 0) + (u.pending ?? 0);
-      return { ...u, completionPct: total > 0 ? Math.round(((u.approved ?? 0) / total) * 100) : 0 };
-    })
-    .sort((a, b) => b.completionPct - a.completionPct)[0];
+  const bestCompletionUser = useMemo(() => {
+    return [...userStatusData]
+      .map(u => {
+        const total = (u.submitted ?? 0) + (u.pending ?? 0);
+        return { ...u, completionPct: total > 0 ? Math.round(((u.approved ?? 0) / total) * 100) : 0 };
+      })
+      .sort((a, b) => b.completionPct - a.completionPct)[0];
+  }, [userStatusData]);
 
   const overdueRate = kpis && kpis.totalAssignments > 0
     ? Math.round(((kpis.lateSubmissions ?? 0) / kpis.totalAssignments) * 100) : 0;
@@ -717,12 +633,10 @@ export default function SuperAdminDashboard({
       : null,
   ].filter(Boolean) as string[];
 
-  
-const completionTrendWithLabel = monthlyTrendData.map(d => ({
-  month: d.month.split("-")[1] || d.month,
-  
-  rate: Math.min(Number(d.approved) || 0, 100),
-}));
+  const completionTrendWithLabel = monthlyTrendData.map(d => ({
+    month: d.month.split("-")[1] || d.month,
+    rate: Math.min(Number(d.approved) || 0, 100),
+  }));
 
   const parsedScoreByMonthData = scoreByMonthData.map(d => ({
     month: d.month.split("-")[1] || d.month, averageScore: d.averageScore,
@@ -736,10 +650,20 @@ const completionTrendWithLabel = monthlyTrendData.map(d => ({
     appearance: "none",
   };
 
+  if (isLoading) {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4,1fr)", gap: 14, padding: 24 }}>
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} style={{ height: 96, borderRadius: 16, background: "#f1f5f9", animation: "pulse 1.5s infinite" }} />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div style={{
       padding: isMobile ? "12px" : "24px",
-      background: "#f0f4f9", minHeight: "100vh",
+      background: "#ffffff", minHeight: "100vh",
       fontFamily: "'Inter', -apple-system, sans-serif",
       display: "flex", flexDirection: "column", gap: 20,
     }}>
@@ -778,29 +702,71 @@ const completionTrendWithLabel = monthlyTrendData.map(d => ({
           <div style={{ position: "relative" }}>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={statusDistData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3} dataKey="value" startAngle={90} endAngle={-270}>
-                  {statusDistData.map((entry, i) => <Cell key={`cell-${i}`} fill={STATUS_COLORS[entry.name] || "#94a3b8"} />)}
+                <defs>
+                  {statusDistData.map((entry, i) => {
+                    const base = STATUS_COLORS[entry.name] || "#94a3b8";
+                    return (
+                      <linearGradient key={`grad-${i}`} id={`statusGrad-${i}`} x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stopColor={base} stopOpacity={1} />
+                        <stop offset="100%" stopColor={base} stopOpacity={0.72} />
+                      </linearGradient>
+                    );
+                  })}
+                </defs>
+                <Pie
+                  data={statusDistData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={58}
+                  outerRadius={86}
+                  paddingAngle={4}
+                  cornerRadius={6}
+                  dataKey="value"
+                  startAngle={90}
+                  endAngle={-270}
+                  stroke="none"
+                >
+                  {statusDistData.map((entry, i) => (
+                    <Cell key={`cell-${i}`} fill={`url(#statusGrad-${i})`} />
+                  ))}
                 </Pie>
                 <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle">
-                  <tspan x="50%" dy="-0.3em" fontSize={26} fontWeight={700} fill="#0f172a">{totalDonut}</tspan>
-                  <tspan x="50%" dy="1.5em" fontSize={12} fill="#94a3b8">Total</tspan>
+                  <tspan x="50%" dy="-0.35em" fontSize={28} fontWeight={700} fill="#0f172a">{totalDonut}</tspan>
+                  <tspan x="50%" dy="1.5em" fontSize={11} fill="#94a3b8" letterSpacing="0.03em">TOTAL TASKS</tspan>
                 </text>
-                <Tooltip formatter={(v: any, n: any) => [v, n]} />
+                <Tooltip
+                  formatter={(v: any, n: any) => [`${v} งาน`, n]}
+                  contentStyle={{ borderRadius: 10, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", fontSize: 12 }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
             {statusDistData.map(d => {
-              const calculatedPercentage = totalDonut > 0
-                ? ((d.value / totalDonut) * 100).toFixed(1) : "0.0";
+              const color = STATUS_COLORS[d.name] || "#94a3b8";
+              const calculatedPercentage = totalDonut > 0 ? (d.value / totalDonut) * 100 : 0;
               return (
-                <div key={d.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: STATUS_COLORS[d.name] || "#94a3b8", display: "inline-block" }} />
-                    <span style={{ color: "#475569" }}>{d.name}</span>
+                <div key={d.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 12, color: "#475569", width: 84, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {d.name}
+                  </span>
+                  <div style={{ flex: 1, background: "#f1f5f9", borderRadius: 999, height: 7, position: "relative", overflow: "hidden" }}>
+                    <div
+                      style={{
+                        width: `${Math.round(calculatedPercentage)}%`,
+                        height: "100%",
+                        borderRadius: 999,
+                        background: color,
+                        transition: "width .35s ease",
+                      }}
+                    />
                   </div>
-                  <span style={{ color: "#0f172a", fontWeight: 600 }}>
-                    {d.value} ({calculatedPercentage}%)
+                  <span style={{ fontSize: 12, color: "#0f172a", fontWeight: 700, width: 30, textAlign: "right", flexShrink: 0 }}>
+                    {d.value}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#94a3b8", width: 34, textAlign: "right", flexShrink: 0 }}>
+                    {calculatedPercentage.toFixed(1)}%
                   </span>
                 </div>
               );
@@ -830,7 +796,7 @@ const completionTrendWithLabel = monthlyTrendData.map(d => ({
             leaderboardFilter === "All Time"
               ? "Team Leaderboard (Top 5) - All Time"
               : leaderboardFilter === "Monthly"
-                ? `Team Leaderboard (Top 5) - ${month ? MONTH_NAMES_EN[Number(month) - 1] : ""} ${year || 2026}`
+                ? `Team Leaderboard (Top 5) - Monthly (${year || 2026})`
                 : `Team Leaderboard (Top 5) - Weekly (${year || 2026})`
           }
           headerRight={
@@ -841,7 +807,7 @@ const completionTrendWithLabel = monthlyTrendData.map(d => ({
             </select>
           }
         >
-          <div style={{ overflowX: "auto", width: "100%", WebkitOverflowScrolling: "touch" }}>
+          <div style={{ overflowX: "auto", width: "100%", WebkitOverflowScrolling: "touch", opacity: isLeaderboardLoading ? 0.5 : 1, transition: "opacity 0.2s" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? "600px" : "auto" }}>
               <thead>
                 <tr style={{ borderBottom: "1.5px solid #f1f5f9" }}>
@@ -875,7 +841,7 @@ const completionTrendWithLabel = monthlyTrendData.map(d => ({
           </div>
         </SectionCard>
 
-        <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.07)", display: "flex", flexDirection: "column" }}>
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.07)", display: "flex", flexDirection: "column", height: "fit-content", opacity: isLeaderboardLoading ? 0.5 : 1, transition: "opacity 0.2s" }}>
           <p style={{ margin: "0 0 16px", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
             Top Performers <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }}>({leaderboardFilter})</span>
           </p>
@@ -899,18 +865,18 @@ const completionTrendWithLabel = monthlyTrendData.map(d => ({
         </div>
       </div>
 
-      {/* ROW 4: Overdue Alert + Team Insights + Workload Distribution */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 14 }}>
+      {/* ROW 4a: Overdue Alert + Team Insights */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, alignItems: "start" }}>
         <SectionCard
           title={
             leaderboardFilter === "All Time"
               ? "⚠ Overdue Alert - All Time"
               : leaderboardFilter === "Monthly"
-                ? `⚠ Overdue Alert - ${month ? MONTH_NAMES_EN[Number(month) - 1] : ""} ${year || 2026}`
+                ? `⚠ Overdue Alert - Monthly (${year || 2026})`
                 : `⚠ Overdue Alert - Weekly (${year || 2026})`
           }
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, opacity: isLeaderboardLoading ? 0.5 : 1, transition: "opacity 0.2s" }}>
             {overdueAlerts.length > 0 ? (
               overdueAlerts.map((u, i) => (
                 <div key={u.username} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -924,15 +890,13 @@ const completionTrendWithLabel = monthlyTrendData.map(d => ({
                     <span style={{ fontSize: 14, fontWeight: 500, color: "#0f172a" }}>{u.nickname}</span>
                   </div>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#ef4444" }}>
-                    {u.rejected} <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }}>งาน</span>
+                    {u.lateCount} <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }}>งาน</span>
                   </span>
                 </div>
               ))
             ) : (
               <div style={{ textAlign: "center", padding: "20px 0", color: "#94a3b8", fontSize: 13 }}>
-                {leaderboardFilter === "Monthly"
-                  ? `ไม่มีงาน Overdue ในเดือน ${month ? MONTH_NAMES_EN[Number(month) - 1] : ""} ${year || 2026}`
-                  : "ไม่มีงาน Overdue ในขณะนี้"}
+                ไม่มีงาน Overdue ในช่วงเวลานี้
               </div>
             )}
           </div>
@@ -956,11 +920,17 @@ const completionTrendWithLabel = monthlyTrendData.map(d => ({
             ))}
           </div>
         </SectionCard>
-
-        <WorkloadDistributionSection userStatusData={userStatusData} />
       </div>
 
-      <OverdueModal isOpen={showOverdueModal} onClose={() => setShowOverdueModal(false)} overdueData={userStatusData} />
+      {/* ROW 4b: Workload Distribution — เต็มความกว้าง */}
+      <WorkloadDistributionSection userStatusData={userStatusData} />
+
+      <OverdueModal
+        isOpen={showOverdueModal}
+        onClose={() => setShowOverdueModal(false)}
+        overdueData={lbUserStatusData}
+        filterTitle={leaderboardFilter}
+      />
     </div>
   );
 }

@@ -1424,7 +1424,7 @@ export default function UserDashboard({ year = null, month = null }: UserDashboa
   }, [withDisplay]);
 
   return (
-    <div style={{ padding: "16px 12px", background: "#f8fafd", minHeight: "100vh", fontFamily: "'Inter', -apple-system, sans-serif", maxWidth: 1480, margin: "0 auto" }}>
+    <div style={{ padding: "16px 12px", background: "#ffffff", minHeight: "100vh", fontFamily: "'Inter', -apple-system, sans-serif", maxWidth: 1480, margin: "0 auto" }}>
       {/* Dynamic Mobile CSS Overrides Injection */}
       <style dangerouslySetInnerHTML={{
         __html: `
@@ -1687,9 +1687,7 @@ export default function UserDashboard({ year = null, month = null }: UserDashboa
       {showAllAssignments && <ViewAllDialog assignments={withDisplay} onClose={() => setShowAllAssignments(false)} />}
       {showAllBadges && <ViewAllBadgesDialog badges={badges} onClose={() => setShowAllBadges(false)} />}
 
-      <button onClick={() => setUseMockBadges(!useMockBadges)} style={{ position: "fixed", bottom: 16, right: 16, padding: "10px 14px", background: useMockBadges ? "#22c55e" : "#94a3b8", color: "#fff", borderRadius: 8, border: "none", cursor: "pointer", zIndex: 999, fontSize: 11, fontWeight: 600, boxShadow: "0 4px 12px rgba(0,0,0,0.15)" }}>
-        🧪 {useMockBadges ? "MOCK" : "API"}
-      </button>
+      
     </div>
   );
 }

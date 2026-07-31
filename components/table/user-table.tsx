@@ -11,36 +11,50 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Edit, RotateCcw, Trash2 } from "lucide-react";
+import { Edit, RotateCcw, Trash2, Eye, EyeOff } from "lucide-react";
 import Swal from "sweetalert2";
-import { useDeleteUser, useGetUsers } from "@/hooks/use-auth"; // 💡 นำเข้า useGetUsers เข้ามา
+import {
+  useDeleteUser,
+  useGetUsers,
+  useToggleUserVisibility,
+} from "@/hooks/use-auth";
 import { useResetUserScore } from "@/hooks/use-score";
 import { useState } from "react";
 import EditUserDialog from "@/components/dialog/edit-user";
 import { useAuthUser } from "@/contexts/auth-context";
 
-// 💡 ปรับให้รับ search พ่วงเข้ามาด้วย (ถ้าหน้าหลักมีการค้นหา)
 interface UserTableProps {
-  search?: string; 
+  search?: string;
 }
 
 export default function UserTable({ search = "" }: UserTableProps) {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState<IUser | null>(null);
   const authUser = useAuthUser();
 
-  // 💡 ดึงข้อมูลผู้ใช้ผ่าน Hook ตรงนี้แทน เพื่อให้ผูกกับระบบ Cache ของ React Query
-  const { data: queryData, isLoading } = useGetUsers({ search });
-  const data = queryData?.data; // เจาะจงเข้าถึง array ของ user ด้านใน
+  const { data: queryData, isLoading } = useGetUsers({
+    search,
+    includeHidden: true,
+  });
+  const data = queryData?.data;
 
   const { mutateAsync: deleteUser } = useDeleteUser();
   const { mutateAsync: resetScore } = useResetUserScore();
+  const { mutateAsync: toggleVisibility } = useToggleUserVisibility();
 
   if (isLoading) {
-    return <div className="text-center p-4 text-sm text-muted-foreground">Loading users...</div>;
+    return (
+      <div className="text-center p-4 text-sm text-muted-foreground">
+        Loading users...
+      </div>
+    );
   }
 
   if (!data || data.length === 0) {
-    return <div className="text-center p-4 text-sm text-muted-foreground">No users found.</div>;
+    return (
+      <div className="text-center p-4 text-sm text-muted-foreground">
+        No users found.
+      </div>
+    );
   }
 
   const handleResetScore = async (id: string, username: string) => {
@@ -84,6 +98,26 @@ export default function UserTable({ search = "" }: UserTableProps) {
     }
   };
 
+  const handleToggleVisibility = async (
+    id: string,
+    username: string,
+    isHidden: boolean,
+  ) => {
+    const result = await Swal.fire({
+      icon: "question",
+      title: isHidden ? "Show this user?" : "Hide this user?",
+      text: isHidden
+        ? `"${username}" will be visible again across the system.`
+        : `"${username}" will be hidden from lists, dropdowns and rankings. Data will not be deleted.`,
+      showCancelButton: true,
+      confirmButtonText: isHidden ? "Yes, show it!" : "Yes, hide it!",
+      confirmButtonColor: isHidden ? "#3b82f6" : "#f97316",
+    });
+    if (result.isConfirmed) {
+      await toggleVisibility({ id });
+    }
+  };
+
   return (
     <div className="rounded-md border bg-card">
       <Table>
@@ -94,6 +128,7 @@ export default function UserTable({ search = "" }: UserTableProps) {
             <TableHead>Nickname</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Role</TableHead>
+            <TableHead className="text-center">Status</TableHead>
             <TableHead className="text-center">Score</TableHead>
             <TableHead className="text-center">Created At</TableHead>
             <TableHead className="text-center">Action</TableHead>
@@ -131,6 +166,19 @@ export default function UserTable({ search = "" }: UserTableProps) {
                     {user.role}
                   </span>
                 </TableCell>
+
+                <TableCell className="text-center">
+                  <span
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap ${
+                      user.isHidden
+                        ? "bg-red-100 text-red-800"
+                        : "bg-green-100 text-green-800"
+                    }`}
+                  >
+                    {user.isHidden ? "Hidden" : "Active"}
+                  </span>
+                </TableCell>
+
                 <TableCell className="text-center font-medium tabular-nums">
                   {user.totalScore ?? 0}
                 </TableCell>
@@ -154,6 +202,34 @@ export default function UserTable({ search = "" }: UserTableProps) {
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
+
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 cursor-pointer"
+                      onClick={() =>
+                        handleToggleVisibility(
+                          user.id,
+                          user.username,
+                          !!user.isHidden,
+                        )
+                      }
+                      disabled={isOwn}
+                      title={
+                        isOwn
+                          ? "Cannot hide your own account"
+                          : user.isHidden
+                            ? "Show user"
+                            : "Hide user"
+                      }
+                    >
+                      {user.isHidden ? (
+                        <Eye className="h-4 w-4" />
+                      ) : (
+                        <EyeOff className="h-4 w-4" />
+                      )}
+                    </Button>
+
                     <Button
                       variant="default"
                       size="icon"
@@ -170,7 +246,9 @@ export default function UserTable({ search = "" }: UserTableProps) {
                       className="h-8 w-8 cursor-pointer"
                       onClick={() => handleDelete(user.id)}
                       disabled={isOwn}
-                      title={isOwn ? "Cannot delete your own account" : undefined}
+                      title={
+                        isOwn ? "Cannot delete your own account" : undefined
+                      }
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

@@ -9,6 +9,7 @@ import {
 import { format } from "date-fns";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Coins, CalendarDays, CalendarCheck, Clock, User, Users, AlertCircle } from "lucide-react";
+import { getEarlyBirdCondition } from "@/lib/early-bird-bonus-table";
 
 interface AssignmentCardProps {
   assignment: IAssignment;
@@ -42,7 +43,7 @@ export default function AssignmentCard({
   const originalDescription = (assignment as any).originalDescription || null;
   const originalReward = (assignment as any).originalReward || null;
 
-  const isDeadlineChanged = 
+  const isDeadlineChanged =
     (originalDeadline && new Date(assignment.deadline).getTime() !== new Date(originalDeadline).getTime());
   const isTitleChanged = originalTitle && assignment.title !== originalTitle;
   const isDescriptionChanged = originalDescription && assignment.description !== originalDescription;
@@ -53,10 +54,20 @@ export default function AssignmentCard({
 
   // ครื่องหมายตกใจจะขึ้นเตือนเมื่อ: ถูก Rejected, มี Feedback หรือมีการแก้ไขข้อมูลใดๆ จากหน้า Manage
   // และจะซ่อนอัตโนมัติเมื่อนักศึกษากดส่งงานรอบใหม่ (สถานะกลับไปเป็น Pending หรือ Approved)
-  const hasAlert = 
-    (resultStatus as string) !== "Pending" && 
-    (resultStatus as string) !== "Approved" && 
+  const hasAlert =
+    (resultStatus as string) !== "Pending" &&
+    (resultStatus as string) !== "Approved" &&
     ((resultStatus as string) === "Rejected" || !!assignment.feedback || isDataChanged);
+
+  // 🆕 Early Bird condition — คำนวณเฉพาะตอน Approved เท่านั้น (ตรงกับ backend ที่ set ค่า null ถ้ายังไม่ approve)
+  const earlyBirdCondition =
+    resultStatus === "Approved" ? getEarlyBirdCondition(assignment.earlyBirdModifier) : null;
+
+  // 🆕 คะแนนที่แสดงบน badge: ใช้ adjustedScore เมื่อ Approved, ไม่งั้นใช้ finalScore เดิม
+  const displayScore =
+    resultStatus === "Approved" && assignment.adjustedScore != null
+      ? assignment.adjustedScore
+      : assignment.finalScore;
 
   const getRemainingDays = () => {
     const now = Date.now();
@@ -108,16 +119,16 @@ export default function AssignmentCard({
   const showAlertBox = hasAlert && !(isNotSubmit && feedbackPresent);
 
   const getStatusStyle = (status: string) => {
-  if (status === "Pending") {
-    return "bg-amber-100 text-amber-800"; 
-  }
-  switch (status) {
-    case "Not Submit": return "bg-amber-100 text-amber-900 border border-amber-200";
-    case "Approved": return "bg-emerald-100 text-emerald-800";
-    case "Rejected": return "bg-red-100 text-red-800";
-    default: return "bg-gray-100 text-gray-700";
-  }
-};
+    if (status === "Pending") {
+      return "bg-amber-100 text-amber-800";
+    }
+    switch (status) {
+      case "Not Submit": return "bg-amber-100 text-amber-900 border border-amber-200";
+      case "Approved": return "bg-emerald-100 text-emerald-800";
+      case "Rejected": return "bg-red-100 text-red-800";
+      default: return "bg-gray-100 text-gray-700";
+    }
+  };
 
   const StatusBadge = () => {
     const badge = (
@@ -148,7 +159,7 @@ export default function AssignmentCard({
           <CardTitle className="text-sm font-medium leading-snug line-clamp-1 max-w-[160px]">
             {assignment.title}
           </CardTitle>
-          
+
           {/* เครื่องหมายตกใจสีแดง แสดงข้างขวาใกล้ปุ่ม Score */}
           <div className="flex items-center gap-1.5 shrink-0">
             {hasAlert && (
@@ -158,7 +169,7 @@ export default function AssignmentCard({
             )}
             <div className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap">
               <Coins className="w-3 h-3" />
-              {assignment.finalScore ? `Score: ${assignment.finalScore}` : `${assignment.reward}`}
+              {displayScore ? `Score: ${displayScore}` : `${assignment.reward}`}
             </div>
           </div>
         </div>
@@ -181,6 +192,17 @@ export default function AssignmentCard({
             {assignment.type}
           </span>
         </div>
+
+        {earlyBirdCondition && (
+          <div
+            className={`mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg w-fit ${earlyBirdCondition.colorClass} ${earlyBirdCondition.textColorClass}`}
+          >
+            <span>{earlyBirdCondition.emoji}</span>
+            <span>
+              {earlyBirdCondition.modifierLabel} → {assignment.adjustedScore} Points
+            </span>
+          </div>
+        )}
       </CardHeader>
 
       <CardContent className="pt-0">
@@ -206,17 +228,15 @@ export default function AssignmentCard({
         </div>
 
         {isNotSubmit && (
-          <div className={`mt-3 rounded-xl border p-3 text-sm ${
-            isDeadlineOverdue
+          <div className={`mt-3 rounded-xl border p-3 text-sm ${isDeadlineOverdue
               ? "border-red-200/80 bg-red-50 text-red-900"
               : "border-amber-200/80 bg-amber-50 text-amber-900"
-          }`}>
+            }`}>
             <div className="font-semibold">ยังไม่ได้ส่งงาน</div>
-            <div className={`mt-1 text-xs ${
-              isDeadlineOverdue
+            <div className={`mt-1 text-xs ${isDeadlineOverdue
                 ? "text-red-700 font-bold"
                 : "text-amber-700"
-            }`}>
+              }`}>
               {getRemainingTime()}
             </div>
             {assignment.feedback && (

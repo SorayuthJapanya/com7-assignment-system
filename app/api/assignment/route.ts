@@ -1,7 +1,6 @@
 import { isAuthorize } from "@/lib/middleware";
 import { NextRequest, NextResponse } from "next/server";
 import { sendMail } from "@/lib/sendMail";
-import { getUserByUsername } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NewAssignmentTemplate } from "@/template/new-assignment-template";
 import { format } from "date-fns";
@@ -67,6 +66,10 @@ export async function GET(request: NextRequest) {
       where.createdBy = authUser.username;
     }
 
+    // Track whether we need the "submitAt > createdAt" (field-to-field) condition
+    // separately, since Prisma's normal `where` cannot compare two columns.
+    let needsSubmitAfterCreated = false;
+
     // Add status filter
     if (status !== "all") {
       if (status === "not-submit") {
@@ -90,10 +93,11 @@ export async function GET(request: NextRequest) {
       } else if (status === "Pending") {
         where.status = "Pending";
         where.feedback = "";
-        where.AND = [
-          ...(where.AND as any[] || []),
-          { submitAt: { gt: prisma.assignment.fields.createdAt } }
-        ]; // ต้องเคยกดส่งงานแล้วจริง (ไม่ว่าจะมีไฟล์หรือไม่)
+        // ต้องเคยกดส่งงานแล้วจริง (ไม่ว่าจะมีไฟล์หรือไม่)
+        // NOTE: Prisma cannot compare two columns (submitAt > createdAt)
+        // inside `where` directly. We flag it here and intersect the id
+        // list with a raw-SQL lookup below, preserving the original intent.
+        needsSubmitAfterCreated = true;
       } else {
         where.status = status;
       }
@@ -131,6 +135,18 @@ export async function GET(request: NextRequest) {
         deadlineFilter.lte = toDate;
       }
       where.deadline = deadlineFilter;
+    }
+
+    // If we need the field-to-field comparison (submitAt > createdAt),
+    // resolve the matching ids first via a raw query, then constrain `where.id`.
+    if (needsSubmitAfterCreated) {
+      const rows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "Assignment" WHERE "submitAt" > "createdAt"
+      `;
+      const allowedIds = rows.map((r) => r.id);
+
+      // Intersect with any existing id constraint just in case; otherwise set it.
+      where.id = { in: allowedIds };
     }
 
     // Get total count for pagination
@@ -210,71 +226,79 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const mailPromises: Promise<unknown>[] = [];
+    // Fetch all target users in a single query (fixes N+1 from the
+    // original per-username getUserByUsername + findUnique calls).
+    const foundUsers = await prisma.user.findMany({
+      where: { username: { in: assignTo } },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        nickname: true,
+        role: true,
+      },
+    });
 
-    for (const username of assignTo) {
-      // Get user by username
-      const user = await getUserByUsername(username);
-      if (!user) {
-        return NextResponse.json(
-          { error: `User not found: ${username}` },
-          { status: 404 },
-        );
-      }
-
-      // Get full user with email
-      const fullUser = await prisma.user.findUnique({
-        where: { username },
-        select: {
-          id: true,
-          username: true,
-          email: true,
-          nickname: true,
-          role: true,
-        },
-      });
-
-      if (!fullUser) {
-        return NextResponse.json(
-          { error: `User not found: ${username}` },
-          { status: 404 },
-        );
-      }
-
-      // Create assignment with assigned users
-      await prisma.assignment.create({
-        data: {
-          title,
-          description,
-          type: type as "Individual" | "Group",
-          userId: fullUser.id,
-          createdBy: authUser.username,
-          reward: parseInt(reward),
-          deadline: new Date(deadline),
-          assignTo: fullUser.username,
-          members: assignTo,
-        },
-      });
-
-      console.log(`Assign to ${fullUser.nickname} successfully`);
-
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/assignment`;
-      mailPromises.push(
-        sendMail({
-          to: fullUser.email,
-          subject: `New Assignment: ${title}`,
-          html: NewAssignmentTemplate({
-            username: fullUser.username,
-            type,
-            title,
-            description,
-            reward: parseInt(reward),
-            formattedDeadline: format(new Date(deadline), "dd/MM/yyyy HH:mm"),
-            url,
-          }),
-        }),
+    // Preserve original behavior: if ANY username in assignTo doesn't
+    // exist, fail the whole request with 404 and the missing username
+    // (original code returned on the first missing user it hit in the loop).
+    const foundUsernameSet = new Set(foundUsers.map((u) => u.username));
+    const missingUsername = (assignTo as string[]).find(
+      (u) => !foundUsernameSet.has(u),
+    );
+    if (missingUsername) {
+      return NextResponse.json(
+        { error: `User not found: ${missingUsername}` },
+        { status: 404 },
       );
     }
+
+    // Preserve original ordering (assignTo order) when creating assignments.
+    const orderedUsers = (assignTo as string[]).map(
+      (u) => foundUsers.find((fu) => fu.username === u)!,
+    );
+
+    // Create all assignments atomically — if one insert fails, none persist,
+    // fixing the original "partial creation on later failure" issue.
+    await prisma.$transaction(
+      orderedUsers.map((fullUser) =>
+        prisma.assignment.create({
+          data: {
+            title,
+            description,
+            type: type as "Individual" | "Group",
+            userId: fullUser.id,
+            createdBy: authUser.username,
+            reward: parseInt(reward),
+            deadline: new Date(deadline),
+            assignTo: fullUser.username,
+            members: assignTo,
+          },
+        }),
+      ),
+    );
+
+    for (const fullUser of orderedUsers) {
+      console.log(`Assign to ${fullUser.nickname} successfully`);
+    }
+
+    // Send all emails in parallel (unchanged from original behavior).
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/assignment`;
+    const mailPromises = orderedUsers.map((fullUser) =>
+      sendMail({
+        to: fullUser.email,
+        subject: `New Assignment: ${title}`,
+        html: NewAssignmentTemplate({
+          username: fullUser.username,
+          type,
+          title,
+          description,
+          reward: parseInt(reward),
+          formattedDeadline: format(new Date(deadline), "dd/MM/yyyy HH:mm"),
+          url,
+        }),
+      }),
+    );
 
     await Promise.all(mailPromises);
 

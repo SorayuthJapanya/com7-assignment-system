@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
           AND (ur."resetAt" IS NULL OR s."createdAt" > ur."resetAt")
         GROUP BY s."recipient_id"
       ) deduction ON u.id = deduction."recipient_id"
-      WHERE u.role != 'SUPER_ADMIN'
+      WHERE u.role != 'SUPER_ADMIN' AND u.role != 'INTERN' AND u."isHidden" = false
       ORDER BY "totalScore" DESC
     `);
 

@@ -6,6 +6,8 @@ export interface IUser {
   role: string;
   profileImage?: string;
   totalScore?: number;
+  isHidden?: boolean;        
+  hiddenAt?: string | null;  
   createdAt: Date;
   updatedAt?: Date;
 }

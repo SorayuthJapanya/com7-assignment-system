@@ -17,7 +17,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "5");
 
-    // Aggregate total score per user (all-time)
     const rawScores = await prisma.$queryRaw<
       { userId: string; username: string; nickname: string; totalScore: bigint; assignmentCount: bigint }[]
     >`
@@ -29,12 +28,13 @@ export async function GET(request: NextRequest) {
         COUNT(s.id) as "assignmentCount"
       FROM "User" u
       LEFT JOIN "Score" s ON u.id = s."recipient_id"
+      WHERE u."isHidden" = false
+        AND u.role NOT IN ('SUPER_ADMIN', 'INTERN')
       GROUP BY u.id, u.username, u.nickname
       ORDER BY "totalScore" DESC
       LIMIT ${limit}
     `;
 
-    // Get all levels for badge resolution
     const levels = await prisma.level.findMany({ orderBy: { minScore: "asc" } });
 
     const leaderboard = rawScores.map((row, index) => {

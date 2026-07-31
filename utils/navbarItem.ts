@@ -1,4 +1,4 @@
-import { FileText, LayoutDashboard, Users, Trophy, Settings2, Calendar, LucideIcon } from "lucide-react";
+import { FileText, LayoutDashboard, Users, Trophy, Settings2, Calendar, LucideIcon, Target  } from "lucide-react";
 
 export type NavbarItem = {
     title: string;
@@ -6,6 +6,7 @@ export type NavbarItem = {
     icon?: LucideIcon;
     isSuperAdmin?: boolean;
     isAdmin?: boolean;
+    isStaffOnly?: boolean;
     items?: NavbarItem[];
 };
 
@@ -66,6 +67,14 @@ export const navbarItems: NavbarItem[] = [
         title: "Level Management",
         url: "/level-management",
         icon: Settings2,
+        isSuperAdmin: true,
+    },
+
+    {
+        title: "Mission & Quest",
+        url: "/mission-quest",
+        icon: Target,
+        isStaffOnly: true, 
         isSuperAdmin: true,
     },
 ]

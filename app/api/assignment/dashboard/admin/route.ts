@@ -12,7 +12,6 @@ import type {
 
 export async function GET(request: NextRequest) {
   try {
-    // isAuthorize
     const authResult = await isAuthorize(request);
 
     if (authResult.error) {
@@ -24,7 +23,6 @@ export async function GET(request: NextRequest) {
 
     const authUser = authResult.user!;
 
-    // Only allow Super Admin to access this route
     if (authUser.role !== "SUPER_ADMIN") {
       return NextResponse.json(
         { error: "Access denied. Only Super Admin can access this route" },
@@ -34,21 +32,33 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
 
-    // Get optional query parameters
     const yearParam = searchParams.get("year");
     const monthParam = searchParams.get("month");
+    const filterParam = searchParams.get("filter") || "all"; // 'all' | 'monthly' | 'weekly'
 
     const year = yearParam ? parseInt(yearParam) : null;
     const month = monthParam ? parseInt(monthParam) : null;
 
-    // Chart display year (always needed for generate_series)
     const chartYear = year || new Date().getFullYear();
 
-    // Build date range only when filters are provided
     let startDate: Date | null = null;
     let endDate: Date | null = null;
 
-    if (year && month) {
+    // 📌 ปรับปรุงการคำนวณช่วงเวลาให้รองรับทั้ง filterParam และ Header Year/Month
+    if (filterParam === "weekly") {
+      const now = new Date();
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+      endDate = new Date();
+    } else if (filterParam === "monthly") {
+      const targetYear = year || new Date().getFullYear();
+      const targetMonth = month || new Date().getMonth() + 1;
+      startDate = new Date(targetYear, targetMonth - 1, 1);
+      endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59, 999);
+    } else if (filterParam === "all") {
+      // ถ้าสั่ง filter=all ให้ดึง All Time ชัดเจน (ไม่ล็อกตาม year/month)
+      startDate = null;
+      endDate = null;
+    } else if (year && month) {
       startDate = new Date(year, month - 1, 1);
       endDate = new Date(year, month, 0, 23, 59, 59, 999);
     } else if (year) {
@@ -56,137 +66,157 @@ export async function GET(request: NextRequest) {
       endDate = new Date(year, 11, 31, 23, 59, 59, 999);
     }
 
-    // Reusable Prisma ORM date filter
-    const dateWhere = startDate && endDate
-      ? { createdAt: { gte: startDate, lte: endDate } }
-      : {};
+    const dateWhere: any = {
+      ...(startDate && endDate ? { createdAt: { gte: startDate, lte: endDate } } : {}),
+      user: {
+        is: {
+          role: { notIn: ["SUPER_ADMIN", "INTERN"] },
+          isHidden: false,
+        },
+      },
+    };
 
-    // Run queries sequentially to avoid exceeding connection pool limit
-    // KPI 1: Total Assignments
     const totalAssignments = await prisma.assignment.count({
-      where: { ...dateWhere },
+      where: dateWhere,
     });
 
-    // KPI 2: Total Submitted
     const totalSubmittedRaw = startDate && endDate
       ? await prisma.$queryRaw`
           SELECT COUNT(*) as count
-          FROM "Assignment"
-          WHERE "submitAt" > "createdAt"
-            AND "createdAt" >= ${startDate}
-            AND "createdAt" <= ${endDate}
+          FROM "Assignment" a
+          JOIN "User" u ON u.id = a."userId"
+          WHERE a."submitAt" > a."createdAt"
+            AND u.role NOT IN ('SUPER_ADMIN', 'INTERN')
+            AND u."isHidden" = false
+            AND a."createdAt" >= ${startDate}
+            AND a."createdAt" <= ${endDate}
         `
       : await prisma.$queryRaw`
           SELECT COUNT(*) as count
-          FROM "Assignment"
-          WHERE "submitAt" > "createdAt"
+          FROM "Assignment" a
+          JOIN "User" u ON u.id = a."userId"
+          WHERE a."submitAt" > a."createdAt"
+            AND u.role NOT IN ('SUPER_ADMIN', 'INTERN')
+            AND u."isHidden" = false
         `;
 
-    // KPI 3: Total Approved
     const totalApproved = await prisma.assignment.count({
-      where: { status: "Approved", ...dateWhere },
+      where: { ...dateWhere, status: "Approved" },
     });
 
-    // KPI 4: Average Score
     const averageScore = await prisma.assignment.aggregate({
-      where: { finalScore: { gt: 0 }, ...dateWhere },
+      where: { ...dateWhere, finalScore: { gt: 0 } },
       _avg: { finalScore: true },
     });
 
-    // KPI 5: Late Submissions
     const lateSubmissions = await prisma.assignment.count({
       where: {
-        submitAt: { gt: prisma.assignment.fields.deadline },
         ...dateWhere,
+        submitAt: { gt: prisma.assignment.fields.deadline },
       },
     });
 
-    // Chart 1: User Assignment Status Overview
+    /* 📌 lateCount นับเฉพาะงานที่ยังไม่ส่ง (Pending) และเลย Deadline แล้ว ณ เวลาปัจจุบัน */
     const userAssignmentData = startDate && endDate
-      ? await prisma.$queryRaw<UserAssignmentStatus[]>`
+      ? await prisma.$queryRaw<(UserAssignmentStatus & { role?: string; lateCount?: number })[]>`
           SELECT
             u.username,
             u.nickname,
+            u.role,
             COUNT(CASE WHEN a."submitAt" > a."createdAt" THEN 1 END) as submitted,
             COUNT(CASE WHEN a.status = 'Approved' THEN 1 END) as approved,
             COUNT(CASE WHEN a.status = 'Rejected' THEN 1 END) as rejected,
-            COUNT(CASE WHEN a.status = 'Pending' THEN 1 END) as pending
+            COUNT(CASE WHEN a.status = 'Pending' THEN 1 END) as pending,
+            COUNT(CASE WHEN a.status = 'Pending' AND a."deadline" < NOW() THEN 1 END) as "lateCount"
           FROM "User" u
           LEFT JOIN "Assignment" a ON u.id = a."userId"
             AND a."createdAt" >= ${startDate}
             AND a."createdAt" <= ${endDate}
           WHERE u.username IS NOT NULL
-          GROUP BY u.id, u.username, u.nickname
+            AND u.role NOT IN ('SUPER_ADMIN', 'INTERN')
+            AND u."isHidden" = false
+          GROUP BY u.id, u.username, u.nickname, u.role
           ORDER BY u.username
         `
-      : await prisma.$queryRaw<UserAssignmentStatus[]>`
+      : await prisma.$queryRaw<(UserAssignmentStatus & { role?: string; lateCount?: number })[]>`
           SELECT
             u.username,
             u.nickname,
+            u.role,
             COUNT(CASE WHEN a."submitAt" > a."createdAt" THEN 1 END) as submitted,
             COUNT(CASE WHEN a.status = 'Approved' THEN 1 END) as approved,
             COUNT(CASE WHEN a.status = 'Rejected' THEN 1 END) as rejected,
-            COUNT(CASE WHEN a.status = 'Pending' THEN 1 END) as pending
+            COUNT(CASE WHEN a.status = 'Pending' THEN 1 END) as pending,
+            COUNT(CASE WHEN a.status = 'Pending' AND a."deadline" < NOW() THEN 1 END) as "lateCount"
           FROM "User" u
           LEFT JOIN "Assignment" a ON u.id = a."userId"
           WHERE u.username IS NOT NULL
-          GROUP BY u.id, u.username, u.nickname
+            AND u.role NOT IN ('SUPER_ADMIN', 'INTERN')
+            AND u."isHidden" = false
+          GROUP BY u.id, u.username, u.nickname, u.role
           ORDER BY u.username
         `;
 
-    // Chart 2: Status Distribution
     const statusDistributionData = startDate && endDate
       ? await prisma.$queryRaw<StatusDistribution[]>`
           WITH total_assignments AS (
-            SELECT COUNT(*) as total FROM "Assignment"
-            WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+            SELECT COUNT(*) as total FROM "Assignment" a
+            JOIN "User" u ON u.id = a."userId"
+            WHERE a."createdAt" >= ${startDate} AND a."createdAt" <= ${endDate}
+              AND u.role NOT IN ('SUPER_ADMIN', 'INTERN')
+              AND u."isHidden" = false
           )
           SELECT 'Approved' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-          FROM "Assignment"
-          WHERE status = 'Approved'
-            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          FROM "Assignment" a JOIN "User" u ON u.id = a."userId"
+          WHERE a.status = 'Approved' AND u.role NOT IN ('SUPER_ADMIN', 'INTERN') AND u."isHidden" = false
+            AND a."createdAt" >= ${startDate} AND a."createdAt" <= ${endDate}
           UNION ALL
           SELECT 'Rejected' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-          FROM "Assignment"
-          WHERE status = 'Rejected'
-            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          FROM "Assignment" a JOIN "User" u ON u.id = a."userId"
+          WHERE a.status = 'Rejected' AND u.role NOT IN ('SUPER_ADMIN', 'INTERN') AND u."isHidden" = false
+            AND a."createdAt" >= ${startDate} AND a."createdAt" <= ${endDate}
           UNION ALL
           SELECT 'Late Submit' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-          FROM "Assignment"
-          WHERE "submitAt" > "deadline" AND "submitAt" > "createdAt"
-            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          FROM "Assignment" a JOIN "User" u ON u.id = a."userId"
+          WHERE a."submitAt" > a."deadline" AND a."submitAt" > a."createdAt" AND u.role NOT IN ('SUPER_ADMIN', 'INTERN') AND u."isHidden" = false
+            AND a."createdAt" >= ${startDate} AND a."createdAt" <= ${endDate}
           UNION ALL
           SELECT 'Pending' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-          FROM "Assignment"
-          WHERE status = 'Pending'
-            AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+          FROM "Assignment" a JOIN "User" u ON u.id = a."userId"
+          WHERE a.status = 'Pending' AND u.role NOT IN ('SUPER_ADMIN', 'INTERN') AND u."isHidden" = false
+            AND a."createdAt" >= ${startDate} AND a."createdAt" <= ${endDate}
         `
       : await prisma.$queryRaw<StatusDistribution[]>`
           WITH total_assignments AS (
-            SELECT COUNT(*) as total FROM "Assignment"
+            SELECT COUNT(*) as total FROM "Assignment" a
+            JOIN "User" u ON u.id = a."userId"
+            WHERE u.role NOT IN ('SUPER_ADMIN', 'INTERN') AND u."isHidden" = false
           )
           SELECT 'Approved' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-          FROM "Assignment" WHERE status = 'Approved'
+          FROM "Assignment" a JOIN "User" u ON u.id = a."userId"
+          WHERE a.status = 'Approved' AND u.role NOT IN ('SUPER_ADMIN', 'INTERN') AND u."isHidden" = false
           UNION ALL
           SELECT 'Rejected' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-          FROM "Assignment" WHERE status = 'Rejected'
+          FROM "Assignment" a JOIN "User" u ON u.id = a."userId"
+          WHERE a.status = 'Rejected' AND u.role NOT IN ('SUPER_ADMIN', 'INTERN') AND u."isHidden" = false
           UNION ALL
           SELECT 'Late Submit' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-          FROM "Assignment" WHERE "submitAt" > "deadline" AND "submitAt" > "createdAt"
+          FROM "Assignment" a JOIN "User" u ON u.id = a."userId"
+          WHERE a."submitAt" > a."deadline" AND a."submitAt" > a."createdAt" AND u.role NOT IN ('SUPER_ADMIN', 'INTERN') AND u."isHidden" = false
           UNION ALL
           SELECT 'Pending' as name, COUNT(*) as value,
             ROUND(COUNT(*) * 100.0 / NULLIF((SELECT total FROM total_assignments), 0), 2) as percentage
-          FROM "Assignment" WHERE status = 'Pending'
+          FROM "Assignment" a JOIN "User" u ON u.id = a."userId"
+          WHERE a.status = 'Pending' AND u.role NOT IN ('SUPER_ADMIN', 'INTERN') AND u."isHidden" = false
         `;
 
-    // Chart 3: Monthly Trend - Only Approved Assignments (All Months)
     const monthlyTrendData = await prisma.$queryRaw<MonthlyTrend[]>`
       WITH all_months AS (
         SELECT
@@ -201,7 +231,10 @@ export async function GET(request: NextRequest) {
           TO_CHAR(a."createdAt", 'YYYY-MM') as month,
           COUNT(CASE WHEN a.status = 'Approved' THEN 1 END) as approved
         FROM "Assignment" a
+        JOIN "User" u ON u.id = a."userId"
         WHERE EXTRACT(YEAR FROM a."createdAt") = ${chartYear}
+          AND u.role NOT IN ('SUPER_ADMIN', 'INTERN')
+          AND u."isHidden" = false
         GROUP BY TO_CHAR(a."createdAt", 'YYYY-MM')
       )
       SELECT
@@ -212,7 +245,6 @@ export async function GET(request: NextRequest) {
       ORDER BY am.month_start
     `;
 
-    // Chart 4: Average Score by Month
     const averageScoreByMonthData = await prisma.$queryRaw<AverageScoreByMonth[]>`
       WITH all_months AS (
         SELECT
@@ -227,9 +259,12 @@ export async function GET(request: NextRequest) {
           TO_CHAR(a."createdAt", 'YYYY-MM') as month,
           AVG(a."finalScore") as averageScore
         FROM "Assignment" a
+        JOIN "User" u ON u.id = a."userId"
         WHERE EXTRACT(YEAR FROM a."createdAt") = ${chartYear}
           AND a."finalScore" > 0
           AND a.status = 'Approved'
+          AND u.role NOT IN ('SUPER_ADMIN', 'INTERN')
+          AND u."isHidden" = false
         GROUP BY TO_CHAR(a."createdAt", 'YYYY-MM')
       )
       SELECT
@@ -240,47 +275,66 @@ export async function GET(request: NextRequest) {
       ORDER BY am.month_start
     `;
 
-    
-    // Chart 5: User Score Summary
-    const userScoreSummaryData = await prisma.$queryRaw<UserScoreSummary[]>`
-      SELECT 
-        u.username,
-        u.nickname,
-        COALESCE(SUM(s.score), 0) as "totalScore",
-        COUNT(s.id) as "assignmentCount"
-      FROM "User" u
-      LEFT JOIN "Score" s ON u.id = s."recipient_id"
-      GROUP BY u.id, u.username, u.nickname
-      ORDER BY "totalScore" DESC
-    `;
+    /* 📌 คำนวณ userScoreSummaryData ปลอดภัยด้วย Parameterized query */
+    const userScoreSummaryData = startDate && endDate
+      ? await prisma.$queryRaw<(UserScoreSummary & { role?: string })[]>`
+          SELECT 
+            u.username,
+            u.nickname,
+            u.role,
+            COALESCE(SUM(s.score), 0) as "totalScore",
+            COUNT(s.id) as "assignmentCount"
+          FROM "User" u
+          LEFT JOIN "Score" s ON u.id = s."recipient_id"
+            AND s."createdAt" >= ${startDate}
+            AND s."createdAt" <= ${endDate}
+          WHERE u.role NOT IN ('SUPER_ADMIN', 'INTERN')
+            AND u."isHidden" = false
+          GROUP BY u.id, u.username, u.nickname, u.role
+          ORDER BY "totalScore" DESC
+        `
+      : await prisma.$queryRaw<(UserScoreSummary & { role?: string })[]>`
+          SELECT 
+            u.username,
+            u.nickname,
+            u.role,
+            COALESCE(SUM(s.score), 0) as "totalScore",
+            COUNT(s.id) as "assignmentCount"
+          FROM "User" u
+          LEFT JOIN "Score" s ON u.id = s."recipient_id"
+          WHERE u.role NOT IN ('SUPER_ADMIN', 'INTERN')
+            AND u."isHidden" = false
+          GROUP BY u.id, u.username, u.nickname, u.role
+          ORDER BY "totalScore" DESC
+        `;
 
     const totalSubmitted = Array.isArray(totalSubmittedRaw)
       ? Number((totalSubmittedRaw[0] as { count: bigint })?.count || 0)
       : 0;
 
-    // Format response data
     const response: AdminDashboardResponse = {
       role: "SUPER_ADMIN",
-      period: { year, month },  // null when not filtered
+      period: { year, month },
       kpis: {
         totalAssignments,
         totalSubmitted,
         totalApproved,
-        averageScore: Math.round(averageScore._avg.finalScore || 0),
+        averageScore: Math.round(averageScore?._avg?.finalScore || 0),
         lateSubmissions,
       },
       charts: {
-        // Chart 1: User Assignment Status Overview
         userAssignmentStatus: {
           title: "User Assignment Overview",
           type: "bar",
           data: userAssignmentData.map((item) => ({
             username: item.username,
             nickname: item.nickname || item.username,
+            role: item.role,
             submitted: Number(item.submitted || 0),
             approved: Number(item.approved || 0),
             rejected: Number(item.rejected || 0),
             pending: Number(item.pending || 0),
+            lateCount: Number(item.lateCount || 0),
           })),
           colors: {
             submitted: "#3b82f6",
@@ -289,8 +343,6 @@ export async function GET(request: NextRequest) {
             pending: "#f59e0b",
           },
         },
-
-        // Chart 2: Status Distribution
         statusDistribution: {
           title: "Assignment Status Distribution",
           type: "pie",
@@ -300,14 +352,12 @@ export async function GET(request: NextRequest) {
             percentage: Number(item.percentage || 0),
           })),
           colors: [
-            "#10b981", // Approved - Green
-            "#ef4444", // Rejected - Red
-            "#f59e0b", // Late Submit - Orange
-            "#6b7280", // Pending - Gray
+            "#10b981",
+            "#ef4444",
+            "#f59e0b",
+            "#6b7280",
           ],
         },
-
-        // Chart 3: Monthly Trend
         monthlyTrend: {
           title: `Tasks Completed By Month (${chartYear})`,
           type: "bar",
@@ -319,8 +369,6 @@ export async function GET(request: NextRequest) {
             approved: "var(--chart-3)",
           },
         },
-
-        // Chart 4: Average Score by Month
         averageScoreByMonth: {
           title: "Average Score By Month",
           type: "line",
@@ -332,20 +380,16 @@ export async function GET(request: NextRequest) {
             averageScore: "var(--primary)",
           },
         },
-
-        // Chart 5: User Score Summary
         userScoreSummary: {
           title: "User Score Summary",
           type: "bar",
-          data: userScoreSummaryData.map((item) => {
-            const mappedItem = {
-              username: item.username,
-              nickname: item.nickname || item.username,
-              totalScore: Number(item.totalScore),
-              assignmentCount: Number(item.assignmentCount),
-            };
-            return mappedItem;
-          }),
+          data: userScoreSummaryData.map((item) => ({
+            username: item.username,
+            nickname: item.nickname || item.username,
+            role: item.role,
+            totalScore: Number(item.totalScore),
+            assignmentCount: Number(item.assignmentCount),
+          })),
           colors: {
             totalScore: "#8b5cf6",
             assignmentCount: "#06b6d4",

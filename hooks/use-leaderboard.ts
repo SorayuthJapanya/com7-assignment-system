@@ -2,14 +2,22 @@ import { getAdminLeaderboard, getPublicLeaderboard } from "@/services/leaderboar
 import { LeaderboardResponse } from "@/types/level";
 import { useQuery } from "@tanstack/react-query";
 
-export const useAdminLeaderboard = (params?: { limit?: number; year?: number; month?: number }) => {
+/* กำหนด type สำหรับ params เพิ่มการรองรับ excludeRole */
+interface LeaderboardParams {
+  limit?: number;
+  year?: number;
+  month?: number;
+  excludeRole?: string;
+}
+
+export const useAdminLeaderboard = (params?: LeaderboardParams) => {
   return useQuery<LeaderboardResponse>({
     queryKey: ["admin-leaderboard", params],
     queryFn: () => getAdminLeaderboard(params),
   });
 };
 
-export const usePublicLeaderboard = (params?: { limit?: number; year?: number; month?: number }) => {
+export const usePublicLeaderboard = (params?: LeaderboardParams) => {
   return useQuery<LeaderboardResponse>({
     queryKey: ["public-leaderboard", params],
     queryFn: () => getPublicLeaderboard(params),

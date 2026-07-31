@@ -13,7 +13,7 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
     "/api/auth/login",
     data,
     {
-      headers: { Authorization: "" } // 🎯 พิมพ์เพิ่ม: สั่งล้าง Token เก่าทิ้งเฉพาะ Request นี้
+      headers: { Authorization: "" } 
     }
   );
   return response.data;
@@ -26,7 +26,7 @@ export const register = async (
     "/api/auth/register",
     data,
     {
-      headers: { Authorization: "" } // 🎯 พิมพ์เพิ่ม: สั่งล้าง Token เก่าทิ้งเฉพาะ Request นี้
+      headers: { Authorization: "" } 
     }
   );
   return response.data;
@@ -49,10 +49,14 @@ export const addUser = async (
   return response.data;
 };
 
-export const getUsers = async (search?: string): Promise<{ data: IUser[] }> => {
-  const response = await axiosInstance.get("/api/auth/get-users", {
-    params: { search },
-  });
+export const getUsers = async (
+  search?: string,
+  includeHidden?: boolean,
+): Promise<{ data: IUser[] }> => {
+  const response = await axiosInstance.get<{ data: IUser[] }>(
+    "/api/auth/get-users",
+    { params: { search, includeHidden } },
+  );
   return response.data;
 };
 
@@ -92,6 +96,15 @@ export const resetPassword = async (data: {
   const response = await axiosInstance.post<{ message: string }>(
     "/api/auth/reset-password",
     data,
+  );
+  return response.data;
+};
+
+export const toggleUserVisibility = async (
+  id: string,
+): Promise<{ message: string; data: IUser }> => {
+  const response = await axiosInstance.patch<{ message: string; data: IUser }>(
+    `/api/auth/toggle-visibility/${id}`,
   );
   return response.data;
 };
