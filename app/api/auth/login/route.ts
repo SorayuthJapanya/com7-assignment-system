@@ -39,7 +39,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate token
-    const token = generateToken({ ...user, profileImage: user.profileImage ?? undefined });
+        const token = generateToken({
+      ...user,
+      profileImage: user.profileImage ?? undefined,
+      hiddenAt: user.hiddenAt ? user.hiddenAt.toISOString() : null, // 👈 เพิ่มการแปลงค่าตรงนี้
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString(),
+      resetAt: user.resetAt ? user.resetAt.toISOString() : null,
+    });
 
     // Create response
     const response = NextResponse.json(

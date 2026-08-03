@@ -8,6 +8,14 @@ import type {
   BonusBucketMeta,
   BonusBucketEntry,
 } from "@/types/mission-quest";
+import {
+  MISSION_TRACKING_START,
+  LEVEL_UP_WINDOW_MS,
+  THREE_DAYS_MS,
+  RESETTABLE_MISSION_IDS,
+  clampStart,
+  getConsistencyProStreak,
+} from "@/lib/mission-shared";
 
 const BONUS_BUCKETS: BonusBucketMeta[] = [
   { key: "super_early", emoji: "🏅", situation: "ส่งเร็วมาก", condition: "ก่อน deadline ≥ 7 วัน", modifierLabel: "+30%", modifierType: "positive", exampleReward: 130 },
@@ -19,34 +27,18 @@ const BONUS_BUCKETS: BonusBucketMeta[] = [
   { key: "late_worst", emoji: "❌", situation: "สายมากที่สุด", condition: "สาย 7+ วัน", modifierLabel: "-50%", modifierType: "negative", exampleReward: 50 },
 ];
 
-// % modifier ต่อ bucket (ต้องเรียงลำดับให้ตรงกับ BONUS_BUCKETS ด้านบนเสมอ)
 const BONUS_PCT = [0.3, 0.2, 0.1, 0, -0.1, -0.25, -0.5];
 
-// 🟢 ตั้งค่าเริ่มนับตั้งแต่วันที่ 1 สิงหาคม 2569 (2026-08-01)
-const MISSION_TRACKING_START = new Date(2026, 7, 1);
-const ENABLE_TRACKING_START_CLAMP = true;
+// NOTE: MISSION_TRACKING_START, LEVEL_UP_WINDOW_MS, THREE_DAYS_MS,
+// RESETTABLE_MISSION_IDS and clampStart() now come from lib/mission-shared.ts.
+// Do NOT re-declare local copies here — that drift (specifically
+// RESETTABLE_MISSION_IDS disagreeing with the redeem route about
+// "no-backlog") was the root cause of the double-claim / can't-claim bugs.
 const AUTO_CLAIM_DEPLOY_START = MISSION_TRACKING_START;
-
-function clampStart(date: Date): Date {
-  if (!ENABLE_TRACKING_START_CLAMP) return date;
-  return date > MISSION_TRACKING_START ? date : MISSION_TRACKING_START;
-}
 
 function pct(current: number, target: number) {
   return target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
 }
-
-const RESETTABLE_MISSION_IDS = new Set([
-  "speed-runner",
-  "workaholic",
-  "quality-king",
-  "first-responder",
-  "zero-reject",
-  "no-backlog",
-  "perfect-month",
-  "consistency-pro",
-  "report-pro",
-]);
 
 function getBonusBucketIndex(deadline: Date, submitAt: Date): number {
   const diffMs = deadline.getTime() - submitAt.getTime();
@@ -62,9 +54,6 @@ function getBonusBucketIndex(deadline: Date, submitAt: Date): number {
   return 6;
 }
 
-// 🎯 ฟังก์ชันคำนวณ Leaderboard แบบ Winner-Takes-All ต่อ Bucket (เฉพาะผู้ครอง Bucket)
-// 🆕 สะสมคะแนนต่อเนื่องตั้งแต่ cycleStart (ไม่ตัดรอบทุกเดือนแล้ว) ไปจนถึง "ตอนนี้"
-// 🆕 rankTrend เทียบกับ rank snapshot ล่าสุดที่บันทึกไว้ (อัปเดตอัตโนมัติทุก 24 ชม.) แทนการเทียบกับ "เดือนก่อนหน้า"
 async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> {
   const approvedAssignments = await prisma.assignment.findMany({
     where: {
@@ -75,7 +64,6 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
     include: { user: { select: { id: true, nickname: true, username: true } } },
   });
 
-  // 1. ค้นหาผู้ชนะอันดับ 1 ของแต่ละ Bucket ( Winner-Takes-All )
   const bucketWinners: (BonusBucketEntry & { userId: string; name: string; username: string })[] = [];
 
   BONUS_BUCKETS.forEach((_, idx) => {
@@ -89,9 +77,9 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
         const earlyMsB = b.deadline.getTime() - b.submitAt.getTime();
 
         if (idx < 4) {
-          return earlyMsB - earlyMsA; // เร็วกว่า ได้อันดับดีกว่า
+          return earlyMsB - earlyMsA;
         } else {
-          return earlyMsA - earlyMsB; // สายกว่า ติดอันดับ
+          return earlyMsA - earlyMsB;
         }
       });
 
@@ -110,14 +98,11 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
     }
   });
 
-  // 2. รวบรวม ID ของคนที่ชนะใน Bucket ต่างๆ (แสดงเฉพาะคนที่ติด Bucket ตาม Logic เดิม)
   const winnerUserIds = Array.from(new Set(bucketWinners.filter(Boolean).map((w) => w!.userId)));
 
-  // 3. คำนวณคะแนนงานสุทธิ (คะแนนฐาน + โบนัส %) ของแต่ละ User จากทุกงาน Approved ตั้งแต่ cycleStart
   const userAssignmentTotalWithBonus = new Map<string, number>();
   approvedAssignments.forEach((a) => {
     const idx = getBonusBucketIndex(a.deadline, a.submitAt);
-    // 🎯 รวมคะแนนฐาน + โบนัส % ( reward * (1 + BONUS_PCT) )
     const totalScoreForAssignment = Math.round((a.reward ?? 0) * (1 + BONUS_PCT[idx]));
     userAssignmentTotalWithBonus.set(
       a.userId,
@@ -125,7 +110,6 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
     );
   });
 
-  // 4. คำนวณ Bonus Points จากการกด Claim Mission ตั้งแต่ cycleStart
   const userClaimBonusTotals = new Map<string, number>();
   if (winnerUserIds.length > 0) {
     const missionClaimSums = await prisma.missionClaim.groupBy({
@@ -141,7 +125,6 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
     });
   }
 
-  // 5. ดึงคะแนนรวม (Total Points) จากตาราง Score ของเฉพาะผู้ชนะ Bucket ตั้งแต่ cycleStart
   const cycleScoreTotals = new Map<string, number>();
   if (winnerUserIds.length > 0) {
     const scoreGroups = await prisma.score.groupBy({
@@ -157,7 +140,6 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
     });
   }
 
-  // 6. รวมผลงานผู้ชนะในแต่ละ Bucket เข้า User Map (แสดงเฉพาะคนติด Bucket)
   const userMap = new Map<
     string,
     {
@@ -181,7 +163,6 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
         where: { userId: winner.userId, claimedAt: { gte: cycleStart, lte: now } },
       });
 
-      // 🎯 รวมคะแนน Bonus = คะแนน Mission Claim + คะแนนงานรวมโบนัส % (คะแนนฐาน + โบนัส)
       const missionBonus = userClaimBonusTotals.get(winner.userId) ?? 0;
       const assignmentScoreWithBonus = userAssignmentTotalWithBonus.get(winner.userId) ?? 0;
       const totalBonusEarned = missionBonus + assignmentScoreWithBonus;
@@ -199,11 +180,10 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
     }
 
     const userData = userMap.get(winner.userId)!;
-    userData.buckets[idx] = 1; // นับสิทธิ์ใน Bucket นี้
+    userData.buckets[idx] = 1;
     userData.bucketEntries[idx] = [winner];
   }
 
-  // 7. จัดอันดับ Leaderboard (สะสมตั้งแต่ cycleStart)
   const currentLeaderboard = Array.from(userMap.values())
     .map((u) => ({
       userId: u.userId,
@@ -228,7 +208,6 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
       return b.missionsDone - a.missionsDone;
     });
 
-  // 8. 🆕 เทียบ rank กับ snapshot ล่าสุด (แทนการเทียบกับ "เดือนก่อนหน้า")
   const prevSnapshot = await getPrevRankSnapshot();
   const prevRankMap = new Map<string, number>(
     prevSnapshot ? Object.entries(prevSnapshot.ranks) : []
@@ -258,7 +237,6 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
     };
   });
 
-  // 9. 🆕 อัปเดต snapshot อัตโนมัติถ้าถึงเวลา (ทุก 24 ชม.) เพื่อใช้เทียบ trend ในครั้งถัดไป
   const currentRanksForSnapshot: Record<string, number> = {};
   rankedLeaderboard.forEach((u) => {
     currentRanksForSnapshot[u.userId] = u.rank;
@@ -268,77 +246,44 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
   return rankedLeaderboard;
 }
 
-function startOfWeek(d: Date): Date {
-  const date = new Date(d);
-  const day = date.getDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  date.setDate(date.getDate() + diff);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
+async function getLevelUpWindowState(userId: string, now: Date) {
+  const levels = await prisma.level.findMany({ orderBy: { minScore: "asc" } });
+  const agg = await prisma.score.aggregate({ where: { recipient_id: userId }, _sum: { score: true } });
+  const totalScore = agg._sum.score ?? 0;
+  const currentIdx = levels.findIndex((l) => totalScore >= l.minScore && totalScore <= l.maxScore);
 
-async function getConsistencyProStreak(
-  nickname: string,
-  now: Date,
-  targetWeeks: number,
-  cycleStart: Date,
-): Promise<number> {
-  const interns = await prisma.user.findMany({
-    where: { role: "INTERN" },
-    select: { id: true },
-  });
-  const internIds = interns.map((i) => i.id);
-
-  if (internIds.length === 0) return 0;
-
-  const lookbackStart = clampStart(
-    new Date(now.getTime() - (targetWeeks + 2) * 7 * 24 * 60 * 60 * 1000),
-  );
-
-  const reviews = await prisma.score.findMany({
-    where: {
-      reviewer: nickname,
-      recipient_id: { in: internIds },
-      createdAt: { gte: lookbackStart, lte: now },
-    },
-    select: { createdAt: true },
+  let win = await prisma.missionWindow.findUnique({
+    where: { userId_missionId: { userId, missionId: "level-up" } },
   });
 
-  const currentWeekStart = startOfWeek(now);
-  const effectiveLowerBound = cycleStart > lookbackStart ? cycleStart : lookbackStart;
-
-  let streak = 0;
-  for (let i = 0; i < targetWeeks; i++) {
-    const weekStart = new Date(currentWeekStart.getTime() - i * 7 * 24 * 60 * 60 * 1000);
-    const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    if (weekEnd <= effectiveLowerBound) break;
-
-    const reviewsThisWeek = reviews.filter((r) => r.createdAt >= weekStart && r.createdAt < weekEnd);
-    const passedThisWeek =
-      reviewsThisWeek.length > 0 && reviewsThisWeek.every((r) => r.createdAt.getHours() < 19);
-
-    if (!passedThisWeek) break;
-    streak++;
+  if (!win) {
+    try {
+      win = await prisma.missionWindow.create({
+        data: { userId, missionId: "level-up", windowStart: now, referenceLevelIdx: currentIdx },
+      });
+    } catch {
+      win = await prisma.missionWindow.findUnique({
+        where: { userId_missionId: { userId, missionId: "level-up" } },
+      });
+    }
   }
 
-  return streak;
-}
+  if (!win) {
+    return { completed: false, currentIdx, windowStart: now, levels };
+  }
 
-async function awardMissionPoints(
-  userId: string,
-  missionId: string,
-  rewardPoints: number,
-  missionName: string,
-) {
-  await prisma.score.create({
-    data: {
-      recipient_id: userId,
-      reviewer: "System (Mission Quest)",
-      assignment_title: `Mission Reward (Auto-claim): ${missionId}`,
-      score: rewardPoints,
-    },
-  });
+  const expired = now.getTime() - win.windowStart.getTime() > LEVEL_UP_WINDOW_MS;
+  const leveledUp = currentIdx > win.referenceLevelIdx;
+
+  if (expired && !leveledUp) {
+    win = await prisma.missionWindow.update({
+      where: { id: win.id },
+      data: { windowStart: now, referenceLevelIdx: currentIdx },
+    });
+    return { completed: false, currentIdx, windowStart: win.windowStart, levels };
+  }
+
+  return { completed: leveledUp, currentIdx, windowStart: win.windowStart, levels };
 }
 
 async function autoClaimUnclaimedPreviousMonth(
@@ -358,7 +303,6 @@ async function autoClaimUnclaimedPreviousMonth(
   const prevSubmitted = prevAssignments.filter((a) => a.status !== "Pending");
   const prevApproved = prevAssignments.filter((a) => a.status === "Approved");
   const prevRejected = prevAssignments.filter((a) => a.status === "Rejected");
-  const prevPending = prevAssignments.filter((a) => a.status === "Pending");
   const prevLateCount = prevSubmitted.filter((a) => a.submitAt > a.deadline).length;
 
   const prevAvgScorePct =
@@ -376,14 +320,48 @@ async function autoClaimUnclaimedPreviousMonth(
     (a) => a.reward > 0 && a.finalScore / a.reward >= 0.85,
   ).length;
 
-  const threeDaysAgoFromMonthEnd = new Date(prevMonthEnd.getTime() - 3 * 24 * 60 * 60 * 1000);
-  const prevHasBacklog = prevPending.some((a) => a.deadline < threeDaysAgoFromMonthEnd);
+  const prevHasBacklog = prevAssignments.some((a) => {
+    const isUnsubmittedPending = !a.submitAt && a.status === "Pending";
+    const isOlderThan3Days = (prevMonthEnd.getTime() - a.createdAt.getTime()) > THREE_DAYS_MS;
+    return isUnsubmittedPending && isOlderThan3Days;
+  });
 
   const prevReviewedCount = await prisma.score.count({
     where: { reviewer: nickname, createdAt: { gte: prevMonthStart, lte: prevMonthEnd } },
   });
 
-  const prevConsistencyStreak = await getConsistencyProStreak(nickname, prevMonthEnd, 8, prevMonthStart);
+  const prevConsistencyStreak = await getConsistencyProStreak(
+    prisma as any,
+    nickname,
+    prevMonthEnd,
+    8,
+    prevMonthStart,
+  );
+
+  // FIX: "comeback-kid" evaluates prevMonth-vs-thisMonth late counts, so by
+  // definition it can only ever be judged accurately from the *current*
+  // month's data (i.e. from the GET request's normal per-request
+  // computation, not from an auto-claim of the previous month in isolation).
+  // Leaving it out of finalStates here is intentional — it is NOT a bug to
+  // omit it from THIS auto-claim pass. However, the real bug was that there
+  // was previously no other safety net for it at all: if a user qualified
+  // (>=3 late last month, 0 late this month) but forgot to click Claim
+  // before the month rolled over, the condition could no longer be true
+  // (this month's data becomes "last month's" and a new comparison starts)
+  // and the reward was lost permanently with no way to recover it.
+  //
+  // We fix that by capturing "comeback-kid" eligibility using the just-
+  // completed prevMonth vs. the month before it, and auto-claiming it here
+  // using the month-N-1-vs-month-N-2 comparison, mirroring how
+  // zero-reject/etc. settle a month in arrears.
+  const prevPrevMonthStart = clampStart(new Date(prevMonthStart.getFullYear(), prevMonthStart.getMonth() - 1, 1));
+  const prevPrevMonthEnd = new Date(prevMonthStart.getFullYear(), prevMonthStart.getMonth(), 0, 23, 59, 59);
+  const prevPrevAssignments = await prisma.assignment.findMany({
+    where: { userId, deadline: { gte: prevPrevMonthStart, lte: prevPrevMonthEnd } },
+  });
+  const prevPrevSubmitted = prevPrevAssignments.filter((a) => a.status !== "Pending");
+  const prevPrevLateCount = prevPrevSubmitted.filter((a) => a.submitAt > a.deadline).length;
+  const comebackKidCompleted = prevPrevLateCount >= 3 && prevLateCount === 0;
 
   const finalStates: { id: string; isCompleted: boolean; rewardPoints: number; name: string }[] = [
     { id: "speed-runner", isCompleted: prevApproved.filter((a) => a.submitAt <= a.deadline).length >= 10, rewardPoints: 1500, name: "Speed Runner" },
@@ -393,8 +371,10 @@ async function autoClaimUnclaimedPreviousMonth(
     { id: "zero-reject", isCompleted: prevAssignments.length > 0 && prevRejected.length === 0, rewardPoints: 500, name: "Zero Reject" },
     { id: "workaholic", isCompleted: prevApproved.length >= 15, rewardPoints: 2000, name: "Workaholic" },
     { id: "report-pro", isCompleted: prevReviewedCount > 20, rewardPoints: 300, name: "20+ Reviews" },
-    { id: "no-backlog", isCompleted: prevAssignments.length > 0 && !prevHasBacklog, rewardPoints: 1000, name: "No Backlog" },
-    { id: "consistency-pro", isCompleted: prevConsistencyStreak >= 8, rewardPoints: 500, name: "8-Week Streak" },
+    { id: "no-backlog", isCompleted: prevApproved.length >= 2 && !prevHasBacklog, rewardPoints: 1000, name: "No Backlog" },
+    { id: "consistency-pro", isCompleted: prevConsistencyStreak >= 8, rewardPoints: 1000, name: "8-Week Streak" },
+    // FIX: previously missing from the auto-claim safety net entirely.
+    { id: "comeback-kid", isCompleted: comebackKidCompleted, rewardPoints: 500, name: "Comeback Kid" },
   ];
 
   const existingClaims = await prisma.missionClaim.findMany({
@@ -455,8 +435,6 @@ export async function GET(request: NextRequest) {
     const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
     const daysLeft = Math.ceil((monthEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-    // มิชชั่นรายบุคคล (speed-runner, workaholic ฯลฯ) ยังคงตัดรอบรายเดือนเหมือนเดิมทุกอย่าง
-    // มีเฉพาะ Early Bird Bonus Leaderboard เท่านั้นที่เปลี่ยนเป็นสะสมต่อเนื่อง (ดูส่วน bonusLeaderboard ด้านล่าง)
     await autoClaimUnclaimedPreviousMonth(
       authUser.id,
       authUser.nickname,
@@ -494,9 +472,6 @@ export async function GET(request: NextRequest) {
 
     const submitted = monthAssignments.filter((a) => a.status !== "Pending");
     const approved = monthAssignments.filter((a) => a.status === "Approved");
-    const rejected = monthAssignments.filter((a) => a.status === "Rejected");
-    const pending = monthAssignments.filter((a) => a.status === "Pending");
-    const lateCount = submitted.filter((a) => a.submitAt > a.deadline).length;
 
     // ── Speed Runner ──
     const speedRunnerWindowStart = clampStart(new Date(now.getFullYear(), now.getMonth() - 1, 1));
@@ -510,12 +485,12 @@ export async function GET(request: NextRequest) {
         deadline: { gte: speedRunnerEffectiveStart, lte: monthEnd },
       },
     });
-    const speedRunnerCurrent = speedRunnerAssignments.filter((a) => a.submitAt <= a.deadline).length;
+    const speedRunnerCurrent = speedRunnerAssignments.filter((a) => a.submitAt <= a.deadline && a.updatedAt >= speedRunnerCycleStart).length;
     const speedRunnerTarget = 10;
 
     // ── Perfect Month ──
     const perfectMonthCycleStart = cycleStartOf("perfect-month");
-    const approvedForPerfect = approved.filter((a) => a.deadline >= perfectMonthCycleStart);
+    const approvedForPerfect = approved.filter((a) => a.deadline >= perfectMonthCycleStart && a.updatedAt >= perfectMonthCycleStart);
     const submittedForPerfect = submitted.filter((a) => a.deadline >= perfectMonthCycleStart);
     const lateCountForPerfect = submittedForPerfect.filter((a) => a.submitAt > a.deadline).length;
     const avgScorePctForPerfect =
@@ -528,7 +503,7 @@ export async function GET(request: NextRequest) {
     // ── First Responder ──
     const firstResponderCycleStart = cycleStartOf("first-responder");
     const firstResponderCount = submitted.filter((a) => {
-      if (a.deadline < firstResponderCycleStart) return false;
+      if (a.deadline < firstResponderCycleStart || a.submitAt < firstResponderCycleStart) return false;
       const diffHours = (a.submitAt.getTime() - a.createdAt.getTime()) / (1000 * 60 * 60);
       return diffHours >= 0 && diffHours <= 24;
     }).length;
@@ -537,26 +512,40 @@ export async function GET(request: NextRequest) {
     // ── Quality King ──
     const qualityKingCycleStart = cycleStartOf("quality-king");
     const qualityKingCurrent = approved.filter(
-      (a) => a.deadline >= qualityKingCycleStart && a.reward > 0 && a.finalScore / a.reward >= 0.85,
+      (a) => a.deadline >= qualityKingCycleStart && a.updatedAt >= qualityKingCycleStart && a.reward > 0 && a.finalScore / a.reward >= 0.85,
     ).length;
     const qualityKingTarget = 8;
 
-    // ── Zero Reject ──
-    const zeroRejectCycleStart = cycleStartOf("zero-reject");
-    const monthAssignmentsForZeroReject = monthAssignments.filter((a) => a.deadline >= zeroRejectCycleStart);
-    const rejectedForZeroReject = rejected.filter((a) => a.deadline >= zeroRejectCycleStart);
-    const hasAnyAssignmentForZeroReject = monthAssignmentsForZeroReject.length > 0;
-    const zeroReject = hasAnyAssignmentForZeroReject && rejectedForZeroReject.length === 0;
+    // ── Zero Reject (สรุปผลเดือนที่แล้ว จ่ายวันที่ 1) ──
+    const prevAssignmentsForZeroReject = await prisma.assignment.findMany({
+      where: { userId: authUser.id, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
+    });
+    const prevRejectedForZeroReject = prevAssignmentsForZeroReject.filter((a) => a.status === "Rejected");
+    const hasAssignmentsPrevMonth = prevAssignmentsForZeroReject.length > 0;
+    const zeroRejectCompleted = hasAssignmentsPrevMonth && prevRejectedForZeroReject.length === 0;
+
+    // FIX: this now matches the record key written by BOTH the auto-claim
+    // path above (month = prevMonthNum/prevYearNum) AND the manual redeem
+    // route (which now also keys zero-reject to the previous month/year).
+    const isZeroRejectClaimed = await prisma.missionClaim.findFirst({
+      where: {
+        userId: authUser.id,
+        missionId: "zero-reject",
+        month: prevMonthStart.getMonth() + 1,
+        year: prevMonthStart.getFullYear(),
+      },
+    });
 
     // ── Workaholic ──
     const workaholicCycleStart = cycleStartOf("workaholic");
-    const workaholicCurrent = approved.filter((a) => a.deadline >= workaholicCycleStart).length;
+    const workaholicCurrent = approved.filter((a) => a.deadline >= workaholicCycleStart && a.updatedAt >= workaholicCycleStart).length;
     const workaholicTarget = 15;
 
     // ── Consistency Pro ──
     const consistencyTarget = 8;
     const consistencyProCycleStart = cycleStartOf("consistency-pro");
     const consistencyProCurrent = await getConsistencyProStreak(
+      prisma as any,
       authUser.nickname,
       now,
       consistencyTarget,
@@ -570,28 +559,38 @@ export async function GET(request: NextRequest) {
     });
     const reportProTarget = 20;
 
-    // ── No Backlog ──
-    const noBacklogCycleStart = cycleStartOf("no-backlog");
-    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-    const pendingForNoBacklog = pending.filter((a) => a.deadline >= noBacklogCycleStart);
-    const hasBacklog = pendingForNoBacklog.some((a) => a.deadline < threeDaysAgo);
-    const hasAnyAssignmentForNoBacklog =
-      monthAssignments.filter((a) => a.deadline >= noBacklogCycleStart).length > 0;
-    const noBacklogCompleted = hasAnyAssignmentForNoBacklog && !hasBacklog;
+    // ── No Backlog (claimable once per calendar month; not resettable) ──
+    const noBacklogCycleStart = monthStart;
+    const assignmentsInNoBacklogCycle = monthAssignments.filter((a) => a.createdAt >= noBacklogCycleStart);
+    const activeOrSubmittedForNoBacklog = assignmentsInNoBacklogCycle.filter((a) => a.submitAt || a.status === "Approved");
 
-    // ── Level Up ──
-    const scoreAgg = await prisma.score.aggregate({
-      where: { recipient_id: authUser.id },
-      _sum: { score: true },
+    const hasBacklog = assignmentsInNoBacklogCycle.some((a) => {
+      const isUnsubmittedPending = !a.submitAt && a.status === "Pending";
+      const isOlderThan3Days = (now.getTime() - a.createdAt.getTime()) > THREE_DAYS_MS;
+      return isUnsubmittedPending && isOlderThan3Days;
     });
-    const totalScore = scoreAgg._sum.score ?? 0;
-    const levels = await prisma.level.findMany({ orderBy: { minScore: "asc" } });
-    const currentLevelIdx = levels.findIndex((l) => totalScore >= l.minScore && totalScore <= l.maxScore);
-    const currentLv = levels[currentLevelIdx];
-    const nextLv = levels[currentLevelIdx + 1];
-    const levelUpPct = currentLv && nextLv
-      ? Math.min(100, Math.round(((totalScore - currentLv.minScore) / (currentLv.maxScore - currentLv.minScore)) * 100))
-      : 0;
+
+    const noBacklogCompleted = activeOrSubmittedForNoBacklog.length >= 2 && !hasBacklog;
+
+    let noBacklogProgressLabel = "";
+    if (activeOrSubmittedForNoBacklog.length < 2) {
+      noBacklogProgressLabel = `ส่ง/อนุมัติงาน ${activeOrSubmittedForNoBacklog.length} / 2 งาน`;
+    } else if (hasBacklog) {
+      noBacklogProgressLabel = "⚠️ มีงานดองเกิน 3 วันยังไม่ได้ส่ง";
+    } else {
+      noBacklogProgressLabel = "✅ 0 backlog · On track";
+    }
+
+    // ── Level Up! ──
+    const levelUpState = await getLevelUpWindowState(authUser.id, now);
+    const levels = levelUpState.levels;
+    const curLv = levels[levelUpState.currentIdx];
+    const nextLv = levels[levelUpState.currentIdx + 1];
+    const levelUpDaysLeft = Math.max(
+      0,
+      Math.ceil((LEVEL_UP_WINDOW_MS - (now.getTime() - levelUpState.windowStart.getTime())) / (1000 * 60 * 60 * 24)),
+    );
+    const levelUpCompleted = levelUpState.completed;
 
     // ── Comeback Kid ──
     const prevMonthAssignments = await prisma.assignment.findMany({
@@ -599,10 +598,11 @@ export async function GET(request: NextRequest) {
     });
     const prevSubmitted = prevMonthAssignments.filter((a) => a.status !== "Pending");
     const prevLateCount = prevSubmitted.filter((a) => a.submitAt > a.deadline).length;
-    const comebackKid = prevLateCount >= 3 && lateCount === 0;
+    const currentSubmitted = monthAssignments.filter((a) => a.status !== "Pending");
+    const currentLateCount = currentSubmitted.filter((a) => a.submitAt > a.deadline).length;
+    const comebackKid = prevLateCount >= 3 && currentLateCount === 0;
 
-    // 🆕 Bonus Leaderboard: สะสมต่อเนื่องตั้งแต่ cycleStart (ตั้งค่าโดย SuperAdmin ผ่านปุ่ม Reset)
-    // ไม่ตัดรอบทุกเดือนแล้ว — cycleStart จะขยับก็ต่อเมื่อ SuperAdmin กด reset เท่านั้น
+    // Leaderboard
     const bonusCycleStart = await getBonusCycleStart();
     const bonusLeaderboard = await getBonusLeaderboard(bonusCycleStart, now);
 
@@ -653,15 +653,24 @@ export async function GET(request: NextRequest) {
         isClaimed: resolveIsClaimed("quality-king", qualityKingCurrent),
       },
       "zero-reject": {
-        id: "zero-reject", emoji: "✨", name: "Zero Reject",
-        description: "ไม่มีงาน Rejected เลย (กด Claim เพื่อเริ่มรอบใหม่)",
-        category: "quality", categoryLabel: "คุณภาพ", rewardPoints: 500,
-        current: zeroReject ? 1 : 0, target: 1,
-        progressLabel: !hasAnyAssignmentForZeroReject
-          ? "ยังไม่มีงานในรอบนี้"
-          : zeroReject ? "✅ 0 rejected · On track" : `${rejectedForZeroReject.length} rejected`,
-        progressPct: zeroReject ? 100 : 0, progressColor: "purple", isCompleted: zeroReject,
-        isClaimed: resolveIsClaimed("zero-reject", zeroReject ? 1 : 0),
+        id: "zero-reject",
+        emoji: "✨",
+        name: "Zero Reject",
+        description: "ไม่มีงาน Rejected เลยตลอดทั้งเดือน (ตัดรอบสรุปผลและรับคะแนนทุกวันที่ 1 ของเดือนถัดไป)",
+        category: "quality",
+        categoryLabel: "คุณภาพ",
+        rewardPoints: 500,
+        current: zeroRejectCompleted ? 1 : 0,
+        target: 1,
+        progressLabel: !hasAssignmentsPrevMonth
+          ? "เดือนที่แล้วไม่มีงาน"
+          : zeroRejectCompleted
+            ? "✅ เดือนที่แล้ว 0 rejected (พร้อมกดรับรางวัล)"
+            : `❌ เดือนที่แล้วมี ${prevRejectedForZeroReject.length} rejected`,
+        progressPct: zeroRejectCompleted ? 100 : 0,
+        progressColor: "purple",
+        isCompleted: zeroRejectCompleted,
+        isClaimed: !!isZeroRejectClaimed,
       },
       workaholic: {
         id: "workaholic", emoji: "💪", name: "Workaholic",
@@ -695,30 +704,37 @@ export async function GET(request: NextRequest) {
       },
       "no-backlog": {
         id: "no-backlog", emoji: "📋", name: "No Backlog",
-        description: "ไม่มีงาน Pending ค้างเกิน 3 วัน (กด Claim เพื่อเริ่มรอบใหม่)",
+        description: "ไม่มีงานดองค้างเกิน 3 วันนับจากวันได้รับ assign + ทำส่ง/อนุมัติ ≥ 2 งาน (Claim ได้ 1 ครั้ง/เดือน)",
         category: "report", categoryLabel: "Routine", rewardPoints: 1000,
-        current: noBacklogCompleted ? 1 : 0, target: 1,
-        progressLabel: !hasAnyAssignmentForNoBacklog
-          ? "ยังไม่มีงานในรอบนี้"
-          : hasBacklog ? "⚠️ มีงานค้าง" : "✅ 0 backlog · On track",
-        progressPct: noBacklogCompleted ? 100 : 0, progressColor: "blue", isCompleted: noBacklogCompleted,
-        isClaimed: resolveIsClaimed("no-backlog", noBacklogCompleted ? 1 : 0),
+        current: activeOrSubmittedForNoBacklog.length, target: 2,
+        progressLabel: noBacklogProgressLabel,
+        progressPct: noBacklogCompleted ? 100 : Math.min(99, Math.round((activeOrSubmittedForNoBacklog.length / 2) * 100)),
+        progressColor: "blue", isCompleted: noBacklogCompleted,
+        // FIX: "no-backlog" is NOT in RESETTABLE_MISSION_IDS (matches redeem
+        // route), so its claimed state is a plain "claimed this month?"
+        // check, same as zero-reject/comeback-kid — not resolveIsClaimed(),
+        // which is only correct for resettable missions.
+        isClaimed: claimedIds.has("no-backlog"),
       },
       "level-up": {
         id: "level-up", emoji: "📈", name: "Level Up!",
-        description: "เลื่อน Level ขึ้น 1 ระดับภายใน 2 อาทิตย์",
+        description: "เลื่อน Level ขึ้น 1 ระดับภายใน 2 อาทิตย์ (กด Claim เพื่อเริ่มรอบใหม่ — ถ้าครบ 14 วันไม่เลื่อน จะเริ่มนับใหม่อัตโนมัติ)",
         category: "growth", categoryLabel: "การเติบโต", rewardPoints: 1000,
-        current: levelUpPct, target: 100,
-        progressLabel: currentLv && nextLv ? `${currentLv.name} → ${nextLv.name}` : "Max level",
-        progressPct: levelUpPct, progressColor: "purple", isCompleted: levelUpPct >= 100,
-        isClaimed: claimedIds.has("level-up"),
+        current: levelUpCompleted ? 1 : 0, target: 1,
+        progressLabel: levelUpCompleted
+          ? `✅ เลื่อน Level แล้ว${curLv ? ` (${curLv.name})` : ""}`
+          : nextLv
+            ? `${curLv ? curLv.name : "-"} → ${nextLv.name} · เหลือ ${levelUpDaysLeft} วัน`
+            : "Max level",
+        progressPct: levelUpCompleted ? 100 : 0, progressColor: "purple", isCompleted: levelUpCompleted,
+        isClaimed: resolveIsClaimed("level-up", levelUpCompleted ? 1 : 0),
       },
       "comeback-kid": {
         id: "comeback-kid", emoji: "🌈", name: "Comeback Kid",
         description: "เดือนที่แล้ว late ≥ 3 ครั้ง แต่เดือนนี้ late = 0",
         category: "growth", categoryLabel: "การเติบโต", rewardPoints: 500,
         current: comebackKid ? 1 : 0, target: 1,
-        progressLabel: `Last: ${prevLateCount} late · This: ${lateCount}`,
+        progressLabel: `Last: ${prevLateCount} late · This: ${currentLateCount}`,
         progressPct: comebackKid ? 100 : 0, progressColor: "teal", isCompleted: comebackKid,
         isClaimed: claimedIds.has("comeback-kid"),
       },

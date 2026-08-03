@@ -7,6 +7,9 @@
 //
 // 🆕 อนุญาตให้ SUPER_ADMIN เข้าดูหน้านี้ได้ด้วย (เดิมจำกัดแค่ STAFF)
 // 🆕 Early Bird Bonus Leaderboard มีปุ่ม Reset สำหรับ SuperAdmin -> refetch ข้อมูลทั้งหน้าหลัง reset สำเร็จ
+// 🔧 FIX: หลัง Claim มิชชั่นสำเร็จ ต้อง refetch ข้อมูลทั้งหน้าจาก server แทนการ patch แค่ isClaimed
+//    เดิม patch เฉพาะ isClaimed=true ทำให้ current/progressPct/isCompleted ค้างค่าดิบก่อน claim
+//    ส่งผลให้ resettable mission ดูเหมือน "ยังกด claim ได้อยู่ ไม่ยอมรีเซ็ต" ทั้งที่ backend รีเซ็ต cycle ให้แล้วจริง ๆ
 
 import { useEffect, useState, useCallback } from "react";
 import type { MissionQuestResponse } from "@/types/mission-quest";
@@ -25,6 +28,7 @@ export default function MissionQuestPage() {
   const authUser = useAuthUser() as IUser | null;
   const [data, setData] = useState<MissionQuestResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isUsingMock, setIsUsingMock] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
@@ -33,8 +37,13 @@ export default function MissionQuestPage() {
   // 🆕 อนุญาตทั้ง STAFF และ SUPER_ADMIN
   const hasAccess = authUser?.role === "STAFF" || authUser?.role === "SUPER_ADMIN";
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    // silent = true: ใช้ตอน refetch หลัง claim/reset ไม่ต้องการให้การ์ดทั้งหน้าโชว์ skeleton ซ้ำ
+    if (opts?.silent) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
     setApiError(null);
     try {
       const res = await fetch("/api/mission-quest");
@@ -53,7 +62,11 @@ export default function MissionQuestPage() {
       setData(MOCK_MISSION_QUEST);
       setIsUsingMock(true);
     } finally {
-      setIsLoading(false);
+      if (opts?.silent) {
+        setIsRefreshing(false);
+      } else {
+        setIsLoading(false);
+      }
     }
   }, []);
 
@@ -72,18 +85,12 @@ export default function MissionQuestPage() {
       const missionName =
         data.sections.flatMap((s) => s.missions).find((m) => m.id === missionId)?.name ?? missionId;
 
-      setData((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          sections: prev.sections.map((section) => ({
-            ...section,
-            missions: section.missions.map((m) =>
-              m.id === missionId ? { ...m, isClaimed: true } : m,
-            ),
-          })),
-        };
-      });
+      // ✅ FIX: refetch ข้อมูลทั้งหน้าใหม่จาก server (แบบ silent ไม่โชว์ skeleton เต็มจอ)
+      // แทนการ setData(...) patch เฉพาะ isClaimed=true แบบเดิม
+      // เพราะ resettable mission ต้องได้ current/progressPct/isCompleted/isClaimed
+      // ของ "รอบใหม่" (cycle เริ่มนับใหม่จาก claimedAt) มาแสดงผลจริง ไม่งั้น UI จะค้างค่าก่อน claim
+      // และ Early Bird Bonus table (totalPoints) ที่อาจได้รับผลกระทบจาก claim ก็จะอัปเดตตามไปด้วย
+      await load({ silent: true });
 
       setClaimResult({ missionName, points: res.rewardPoints });
 
@@ -133,11 +140,20 @@ export default function MissionQuestPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto flex flex-col gap-8">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">Mission &amp; Quest</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          ภารกิจประจำเดือน สะสมแต้ม แลกรางวัล และไต่อันดับ Leaderboard
-        </p>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Mission &amp; Quest</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            ภารกิจประจำเดือน สะสมแต้ม แลกรางวัล และไต่อันดับ Leaderboard
+          </p>
+        </div>
+
+        {/* 🆕 indicator เล็ก ๆ ตอน refetch แบบ silent หลัง claim/reset ไม่บัง UI เดิม */}
+        {isRefreshing && (
+          <span className="text-[11px] text-slate-400 animate-pulse whitespace-nowrap">
+            กำลังอัปเดตข้อมูล...
+          </span>
+        )}
       </div>
 
       {isUsingMock && (
@@ -157,7 +173,11 @@ export default function MissionQuestPage() {
       <RewardBanner summary={data.summary} />
 
       {/* 2. Early Bird Bonus (รวม KPI 4 การ์ดอยู่ในนี้แล้ว) — SuperAdmin กด Reset ได้จากในนี้ */}
-      <EarlyBirdBonusTable data={data.bonusTable} kpis={data.kpis} onResetSuccess={load} />
+      <EarlyBirdBonusTable
+        data={data.bonusTable}
+        kpis={data.kpis}
+        onResetSuccess={() => load({ silent: true })}
+      />
 
       {/* 3. มิชชั่นแต่ละกลุ่ม — เฉพาะ 11 มิชชั่นที่เชื่อม API จริงแล้ว */}
       {data.sections.map((section) => (

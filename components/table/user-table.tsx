@@ -260,10 +260,18 @@ export default function UserTable({ search = "" }: UserTableProps) {
         </TableBody>
       </Table>
 
+      {/*  แนบค่า totalScore ส่งเข้า Dialog */}
       <EditUserDialog
         open={!!isEditDialogOpen}
         onClose={() => setIsEditDialogOpen(null)}
-        user={isEditDialogOpen}
+        user={
+          isEditDialogOpen
+            ? {
+                ...isEditDialogOpen,
+                score: (isEditDialogOpen as any).totalScore ?? 0,
+              }
+            : null
+        }
       />
     </div>
   );

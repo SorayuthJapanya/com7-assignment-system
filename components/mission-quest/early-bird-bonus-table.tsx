@@ -14,6 +14,22 @@ const MODIFIER_STYLE: Record<"positive" | "neutral" | "negative", string> = {
   negative: "text-red-600 border-red-200 bg-red-50",
 };
 
+// 🟢 ไล่สี badge หัวคอลัมน์ตามลำดับ: เขียวเข้ม (เร็วมาก) → เหลือง (เฉียดฉิว) → แดงเข้ม (สายมาก)
+// อ้างอิงตามตำแหน่ง index ของ buckets ที่ backend ส่งมา (เรียงจากเร็วสุดไปช้าสุด)
+const BUCKET_COLOR_BY_INDEX = [
+  "bg-green-600 text-white hover:bg-green-700",
+  "bg-green-400 text-green-950 hover:bg-green-500",
+  "bg-green-200 text-green-900 hover:bg-green-300",
+  "bg-amber-300 text-amber-950 hover:bg-amber-400",
+  "bg-orange-300 text-orange-950 hover:bg-orange-400",
+  "bg-red-400 text-white hover:bg-red-500",
+  "bg-red-600 text-white hover:bg-red-700",
+];
+
+function getBucketBadgeClass(idx: number) {
+  return BUCKET_COLOR_BY_INDEX[idx] ?? "bg-slate-100 text-slate-600 hover:bg-slate-200/80";
+}
+
 function formatShortDate(iso: string | Date) {
   if (!iso) return "-";
   const d = new Date(iso);
@@ -285,7 +301,7 @@ export default function EarlyBirdBonusTable({ data, kpis, onResetSuccess }: Earl
                     <span className="text-[9px] whitespace-nowrap">Missions</span>
                   </span>
                 </th>
-                {buckets.map((b) => (
+                {buckets.map((b, idx) => (
                   <th key={b.key} className="py-2.5 px-1 text-center align-bottom">
                     <span
                       onMouseEnter={(e) => handleMouseEnter(e, b, undefined, undefined, "header")}
@@ -293,7 +309,12 @@ export default function EarlyBirdBonusTable({ data, kpis, onResetSuccess }: Earl
                       className="inline-flex items-center justify-center cursor-default w-full"
                     >
                       {/* 🟢 แสดงคำเต็ม 100% ห้ามตัดคำ ห้ามขึ้นบรรทัดใหม่ */}
-                      <span className="text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-1.5 rounded-md whitespace-nowrap hover:bg-slate-200/80 transition-colors inline-block">
+                      <span
+                        className={cn(
+                          "text-[10px] font-medium px-2 py-1.5 rounded-md whitespace-nowrap transition-colors inline-block",
+                          getBucketBadgeClass(idx)
+                        )}
+                      >
                         {b.condition}
                       </span>
                     </span>

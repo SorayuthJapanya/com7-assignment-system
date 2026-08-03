@@ -169,7 +169,7 @@ export const MOCK_MISSION_QUEST: MissionQuestResponse = {
           description: "ไม่มีงาน Pending ค้างเกิน 3 วันตลอดเดือน",
           category: "report",
           categoryLabel: "Routine",
-          rewardPoints: 200,
+          rewardPoints: 1000,
           current: 1,
           target: 1,
           progressLabel: "✅ 0 backlog · On track",

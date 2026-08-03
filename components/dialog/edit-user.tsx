@@ -39,6 +39,7 @@ const editUserSchema = z.object({
   nickname: z.string().min(1, "Nickname is required"),
   email: z.string().email("Invalid email address"),
   role: z.enum(ROLE_OPTIONS),
+  score: z.union([z.number(), z.nan()]).optional(),
 });
 
 type EditUserFormValues = z.infer<typeof editUserSchema>;
@@ -46,7 +47,7 @@ type EditUserFormValues = z.infer<typeof editUserSchema>;
 interface EditUserDialogProps {
   open: boolean;
   onClose: () => void;
-  user: IUser | null;
+  user: (IUser & { score?: number; totalScore?: number }) | null;
 }
 
 export default function EditUserDialog({
@@ -63,17 +64,20 @@ export default function EditUserDialog({
       nickname: "",
       email: "",
       role: "STAFF",
+      score: 0,
     },
   });
 
-  // 💡 เมื่อ user เปลี่ยน (เปิด dialog สำหรับคนละคน) ให้ reset ฟอร์มด้วยข้อมูลของ user นั้น
+  // 💡 เมื่อเปิด Dialog ดึงคะแนนปัจจุบัน (totalScore หรือ score) เข้าฟอร์มทันที
   useEffect(() => {
     if (user) {
+      const currentScore = user.totalScore ?? user.score ?? 0;
       form.reset({
         username: user.username ?? "",
         nickname: user.nickname ?? "",
         email: user.email ?? "",
         role: (user.role as EditUserFormValues["role"]) ?? "STAFF",
+        score: currentScore,
       });
     }
   }, [user, form]);
@@ -90,17 +94,58 @@ export default function EditUserDialog({
       },
     });
 
-    await updateUser({
-      id: user.id,
-      data: {
-        username: data.username,
-        nickname: data.nickname,
-        email: data.email,
-        role: data.role,
-      },
-    });
+    try {
+      // 1. อัปเดตข้อมูลผู้ใช้หลัก (Logic เดิม)
+      await updateUser({
+        id: user.id,
+        data: {
+          username: data.username,
+          nickname: data.nickname,
+          email: data.email,
+          role: data.role,
+        },
+      });
 
-    onClose();
+      // 2. คำนวณส่วนต่างคะแนน (คะแนนใหม่ - คะแนนเดิม)
+      const currentScore = user.totalScore ?? user.score ?? 0;
+      const newScore = data.score ?? 0;
+      const diffScore = newScore - currentScore;
+
+      if (!isNaN(diffScore) && diffScore !== 0) {
+        const adjustRes = await fetch("/api/auth/adjust-score", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetUserId: user.id,
+            points: diffScore,
+            reason: "Admin Score Adjustment",
+          }),
+        });
+
+        if (!adjustRes.ok) {
+          const errData = await adjustRes.json();
+          throw new Error(errData.error || "Failed to adjust score");
+        }
+      }
+
+      Swal.fire({
+        icon: "success",
+        title: "Updated!",
+        text: "User details updated successfully",
+        timer: 1500,
+        showConfirmButton: false,
+      });
+
+      onClose();
+      window.location.reload();
+    } catch (error: any) {
+      console.error("Update error:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: error.message || "Something went wrong",
+      });
+    }
   };
 
   return (
@@ -192,6 +237,30 @@ export default function EditUserDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* 🟢 แสดงค่าคะแนนปัจจุบันและรองรับการพิมพ์แก้ไข */}
+            <FormField
+              control={form.control}
+              name="score"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Score</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="Enter score"
+                      value={field.value ?? ""}
+                      onChange={(e) =>
+                        field.onChange(
+                          e.target.value === "" ? 0 : e.target.valueAsNumber
+                        )
+                      }
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
