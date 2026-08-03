@@ -100,6 +100,7 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
 
   const winnerUserIds = Array.from(new Set(bucketWinners.filter(Boolean).map((w) => w!.userId)));
 
+  // คะแนนจาก Assignment เท่านั้น (ฐาน + โบนัส %)
   const userAssignmentTotalWithBonus = new Map<string, number>();
   approvedAssignments.forEach((a) => {
     const idx = getBonusBucketIndex(a.deadline, a.submitAt);
@@ -110,20 +111,8 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
     );
   });
 
-  const userClaimBonusTotals = new Map<string, number>();
-  if (winnerUserIds.length > 0) {
-    const missionClaimSums = await prisma.missionClaim.groupBy({
-      by: ["userId"],
-      where: {
-        userId: { in: winnerUserIds },
-        claimedAt: { gte: cycleStart, lte: now },
-      },
-      _sum: { points: true },
-    });
-    missionClaimSums.forEach((g) => {
-      userClaimBonusTotals.set(g.userId, g._sum.points ?? 0);
-    });
-  }
+  // ❌ ลบ userClaimBonusTotals / missionClaimSums ออกแล้ว
+  // bonusEarned นับเฉพาะ Assignment ไม่รวม Mission Claim
 
   const cycleScoreTotals = new Map<string, number>();
   if (winnerUserIds.length > 0) {
@@ -159,13 +148,13 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
     if (!winner) continue;
 
     if (!userMap.has(winner.userId)) {
+      // คอลัมน์ Missions ยังนับจาก claim ตามเดิม
       const claimedMissions = await prisma.missionClaim.findMany({
         where: { userId: winner.userId, claimedAt: { gte: cycleStart, lte: now } },
       });
 
-      const missionBonus = userClaimBonusTotals.get(winner.userId) ?? 0;
+      // ✅ นับเฉพาะคะแนนจาก Assignment
       const assignmentScoreWithBonus = userAssignmentTotalWithBonus.get(winner.userId) ?? 0;
-      const totalBonusEarned = missionBonus + assignmentScoreWithBonus;
 
       userMap.set(winner.userId, {
         userId: winner.userId,
@@ -174,7 +163,7 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
         buckets: new Array(BONUS_BUCKETS.length).fill(0),
         bucketEntries: Array.from({ length: BONUS_BUCKETS.length }, () => []),
         missionsDone: claimedMissions.length,
-        bonusEarned: totalBonusEarned,
+        bonusEarned: assignmentScoreWithBonus,
         totalPoints: cycleScoreTotals.get(winner.userId) ?? 0,
       });
     }
