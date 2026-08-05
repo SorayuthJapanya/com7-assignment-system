@@ -5,11 +5,16 @@ import { useAuthUser } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
 import { ShieldAlert, User, ChevronDown, Check } from "lucide-react";
 import { useGetUsers } from "@/hooks/use-auth";
+import dynamic from "next/dynamic";
 import AdminKpiCards, { type KpiScope } from "./admin-kpi-cards";
 import StaffDetailView from "./staff-detail-view";
 import EarlyBirdBonusTable from "@/components/mission-quest/early-bird-bonus-table";
-import KpiDrilldownPanel from "./kpi-drilldown-panel";
 import type { MissionQuestResponse } from "@/types/mission-quest";
+
+// 🚀 Dynamic Import สำหรับ Component ที่ไม่ได้ใช้ทันที เพื่อลด Initial Bundle Size
+const KpiDrilldownPanel = dynamic(() => import("./kpi-drilldown-panel"), {
+  ssr: false,
+});
 
 type UserOption = { id: string; username: string; nickname: string; role: string };
 
@@ -37,7 +42,10 @@ export default function MissionQuestAdminPage() {
   const router = useRouter();
   const [data, setData] = useState<AdminData | null>(null);
   const [leaderboardData, setLeaderboardData] = useState<MissionQuestResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  
+  // 🚀 แยก Loading state เพื่อให้ส่วนที่มาถึงก่อนสามารถแสดงผลได้ทันที
+  const [loadingData, setLoadingData] = useState(true);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(true);
 
   // ── เลือกดู Mission Board ของ staff คนไหน ──
   const [selectedUser, setSelectedUser] = useState<{ id: string; username: string } | null>(null);
@@ -53,20 +61,26 @@ export default function MissionQuestAdminPage() {
     nickname: string;
   } | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [adminRes, lbRes] = await Promise.all([
-        fetch("/api/mission-quest/admin"),
-        fetch("/api/mission-quest"),
-      ]);
-      if (adminRes.ok) setData(await adminRes.json());
-      if (lbRes.ok) setLeaderboardData(await lbRes.json());
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+  // 🚀 ปรับวิธีดึงข้อมูลแบบคู่ขนานแบบไม่บล็อกกันเอง
+  const load = useCallback(() => {
+    setLoadingData(true);
+    setLoadingLeaderboard(true);
+
+    fetch("/api/mission-quest/admin")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((resData) => {
+        if (resData) setData(resData);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingData(false));
+
+    fetch("/api/mission-quest")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((lbData) => {
+        if (lbData) setLeaderboardData(lbData);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingLeaderboard(false));
   }, []);
 
   useEffect(() => {
@@ -77,7 +91,10 @@ export default function MissionQuestAdminPage() {
     if (authUser?.role === "SUPER_ADMIN") load();
   }, [authUser, router, load]);
 
+  // 🚀 ผูก Event listener เฉพาะตอนที่ Dropdown เปิดอยู่ เพื่อลด Memory & CPU Consumption
   useEffect(() => {
+    if (!isOpen) return;
+
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsOpen(false);
@@ -85,7 +102,7 @@ export default function MissionQuestAdminPage() {
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [isOpen]);
 
   // แสดงเฉพาะ STAFF — ไม่นับ INTERN และ SUPER_ADMIN
   const sortedUsers = useMemo((): UserOption[] => {
@@ -97,31 +114,21 @@ export default function MissionQuestAdminPage() {
       .sort((a, b) => (a.username || "").localeCompare(b.username || "", "en"));
   }, [usersData]);
 
-  const handleSelectAll = () => {
+  const handleSelectAll = useCallback(() => {
     setIsOpen(false);
     setSelectedUser(null);
-  };
+  }, []);
 
-  const handleSelectUser = (id: string, username: string) => {
+  const handleSelectUser = useCallback((id: string, username: string) => {
     setIsOpen(false);
     setSelectedUser({ id, username });
-  };
+  }, []);
 
   if (!authUser || authUser.role !== "SUPER_ADMIN") {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
         <ShieldAlert className="size-8 text-red-500" />
         <p className="text-sm text-slate-500">เฉพาะ Super Admin เท่านั้น</p>
-      </div>
-    );
-  }
-
-  if (loading || !data) {
-    return (
-      <div className="p-6 space-y-4">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
-        ))}
       </div>
     );
   }
@@ -197,24 +204,38 @@ export default function MissionQuestAdminPage() {
         </div>
       </div>
 
-      <AdminKpiCards
-        kpi={data.kpi}
-        onSelect={(scope) => {
-          if (!scope?.kind) return;
-          setKpiScope(scope);
-          setDetailUser(null);
-        }}
-      />
-
-      {leaderboardData?.bonusTable && (
-        <EarlyBirdBonusTable
-          data={leaderboardData.bonusTable}
-          kpis={leaderboardData.kpis}
-          onResetSuccess={load}
+      {/* 🚀 เรนเดอร์ KPI ตามสถานะ โหลดก่อนมาแสดงก่อน */}
+      {loadingData || !data ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <AdminKpiCards
+          kpi={data.kpi}
+          onSelect={(scope) => {
+            if (!scope?.kind) return;
+            setKpiScope(scope);
+            setDetailUser(null);
+          }}
         />
       )}
 
-      {kpiScope != null && (
+      {/* 🚀 เรนเดอร์ Bonus Table ทันทีที่ API ข้อมูลฝั่ง Leaderboard ตอบกลับมา */}
+      {loadingLeaderboard ? (
+        <div className="h-48 rounded-xl bg-muted animate-pulse" />
+      ) : (
+        leaderboardData?.bonusTable && (
+          <EarlyBirdBonusTable
+            data={leaderboardData.bonusTable}
+            kpis={leaderboardData.kpis}
+            onResetSuccess={load}
+          />
+        )
+      )}
+
+      {kpiScope != null && data && (
         <KpiDrilldownPanel
           scope={kpiScope}
           claims={data.claims ?? []}

@@ -11,7 +11,6 @@ import { BONUS_BUCKETS } from "@/lib/bonus-buckets";
 import type {
   MissionQuestResponse,
   Mission,
-  BonusBucketEntry,
 } from "@/types/mission-quest";
 import {
   MISSION_TRACKING_START,
@@ -28,252 +27,244 @@ function pct(current: number, target: number) {
   return target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
 }
 
+async function safeGetConsistencyStreak(
+  username: string,
+  now: Date,
+  targetWeeks: number,
+  cycleStart: Date
+): Promise<number> {
+  try {
+    return await getConsistencyProStreak(prisma as any, username, now, targetWeeks, cycleStart);
+  } catch (err) {
+    console.error("Failed to calculate consistency pro streak:", err);
+    return 0;
+  }
+}
+
 async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> {
-  const approvedAssignments = (
-    await prisma.assignment.findMany({
-      where: {
-        status: "Approved",
-        // 🔁 CHANGED: was `deadline: { gte: cycleStart }` only.
-        //
-        // Two groups of assignments legitimately belong to "this cycle"
-        // and both need to be included, or entries silently vanish:
-        //  1. Normal case — deadline falls within the cycle (assignment
-        //     was assigned during this cycle).
-        //  2. Edge case — deadline falls BEFORE the cycle started, but the
-        //     assignment was submitted/approved/scored DURING this cycle
-        //     (e.g. deadline 29/07, submitted 05/08, cycle started 01/08).
-        //     The Score entry (Record Bonus / Late Penalty) was already
-        //     created for them regardless of cycle boundaries (see
-        //     maybeAwardRecordBonus / maybeApplyLatePenalty, which never
-        //     gate on the assignment's OWN deadline), so they need to show
-        //     up here too or the score and the bucket badge disagree.
-        //
-        // Filtering by `submitAt` ALONE (previous attempt) fixed case 2
-        // but broke case 1: any assignment whose deadline is in-cycle but
-        // was submitted before the cycle started (e.g. right after a
-        // Reset) got excluded even though it always used to show. Using
-        // OR covers both groups without dropping anyone.
-        OR: [
-          { deadline: { gte: cycleStart } },
-          { submitAt: { gte: cycleStart } },
-        ],
-        user: { role: "STAFF" },
-      },
-      include: {
-        user: { select: { id: true, nickname: true, username: true } },
-      },
-    })
-  ).filter((a) => a.submitAt != null);
+  try {
+    const approvedAssignments = (
+      await prisma.assignment.findMany({
+        where: {
+          status: "Approved",
+          OR: [
+            { deadline: { gte: cycleStart } },
+            { submitAt: { gte: cycleStart } },
+          ],
+          user: { role: "STAFF" },
+        },
+        include: {
+          user: { select: { id: true, nickname: true, username: true } },
+        },
+      })
+    ).filter((a) => a.submitAt != null);
 
-  // ── เปลี่ยนจาก "1 winner / bucket" → "ทุกคนที่มีงานใน bucket นั้น" ──
-  // key = `${userId}:${bucketIdx}`
-  type Entry = {
-    id: string;
-    assignmentId: string;
-    title: string;
-    deadline: Date;
-    submitAt: Date;
-    userId: string;
-    name: string;
-    username: string;
-    reward: number;
-    earlyMs: number; // deadline - submitAt (บวก = ส่งก่อน, ลบ = สาย)
-  };
-
-  // bucketIdx → Map<userId, best Entry ของคนนั้นใน bucket นี้>
-  const bucketUserBest = Array.from(
-    { length: BONUS_BUCKETS.length },
-    () => new Map<string, Entry>(),
-  );
-
-  for (const a of approvedAssignments) {
-    const idx = getFullBucketIndex(a.deadline, a.submitAt!);
-    if (idx < 0 || idx >= BONUS_BUCKETS.length) continue;
-
-    const earlyMs = a.deadline.getTime() - a.submitAt!.getTime();
-    const entry: Entry = {
-      id: a.id,
-      assignmentId: a.id,
-      title: a.title,
-      deadline: a.deadline,
-      submitAt: a.submitAt!,
-      userId: a.userId,
-      name: a.user.nickname,
-      username: a.user.username,
-      reward: a.reward,
-      earlyMs,
-    };
-
-    const map = bucketUserBest[idx];
-    const prev = map.get(a.userId);
-
-    if (!prev) {
-      map.set(a.userId, entry);
-      continue;
-    }
-
-    // early buckets (0-3): เก็บสถิติที่ "เร็วที่สุด" (earlyMs มากสุด)
-    // late buckets (4-6): เก็บสถิติที่ "ช้าที่สุด" (earlyMs น้อยสุด / ติดลบมากสุด)
-    const isBetter =
-      idx < 4 ? entry.earlyMs > prev.earlyMs : entry.earlyMs < prev.earlyMs;
-
-    if (isBetter) {
-      map.set(a.userId, entry);
-    }
-  }
-
-  // รวบรวม user ทั้งหมดที่ติดอย่างน้อย 1 bucket
-  const allUserIds = new Set<string>();
-  bucketUserBest.forEach((map) => {
-    map.forEach((_, userId) => allUserIds.add(userId));
-  });
-
-  if (allUserIds.size === 0) {
-    return [];
-  }
-
-  const winnerIdsForQuery = Array.from(allUserIds);
-
-  type ScoreGroupByRecipient = {
-    recipient_id: string;
-    _sum: { score: number | null };
-  };
-
-  const [scoreGroups, claimsByUser] = await Promise.all([
-    prisma.score.groupBy({
-      by: ["recipient_id"],
-      where: {
-        recipient_id: { in: winnerIdsForQuery },
-        createdAt: { gte: cycleStart, lte: now },
-      },
-      _sum: { score: true },
-    }),
-    prisma.missionClaim.findMany({
-      where: {
-        userId: { in: winnerIdsForQuery },
-        claimedAt: { gte: cycleStart, lte: now },
-      },
-      select: { userId: true },
-    }),
-  ]);
-
-  const cycleScoreTotals = new Map<string, number>();
-  (scoreGroups as ScoreGroupByRecipient[]).forEach((g) => {
-    cycleScoreTotals.set(g.recipient_id, g._sum?.score ?? 0);
-  });
-
-  const claimsCountByUser = new Map<string, number>();
-  claimsByUser.forEach((c) => {
-    claimsCountByUser.set(c.userId, (claimsCountByUser.get(c.userId) ?? 0) + 1);
-  });
-
-  const userMap = new Map<
-    string,
-    {
+    type Entry = {
+      id: string;
+      assignmentId: string;
+      title: string;
+      deadline: Date;
+      submitAt: Date;
       userId: string;
       name: string;
       username: string;
-      buckets: number[];
-      bucketEntries: any[][];
-      missionsDone: number;
-      bonusEarned: number;
-      totalPoints: number;
-    }
-  >();
+      reward: number;
+      earlyMs: number;
+    };
 
-  // สร้างแถวต่อ user — คนเดียวติดได้หลาย bucket
-  for (let idx = 0; idx < bucketUserBest.length; idx++) {
-    const map = bucketUserBest[idx];
-    map.forEach((entry) => {
-      if (!userMap.has(entry.userId)) {
-        const realCycleTotal = cycleScoreTotals.get(entry.userId) ?? 0;
-        userMap.set(entry.userId, {
-          userId: entry.userId,
-          name: entry.name,
-          username: entry.username,
-          buckets: new Array(BONUS_BUCKETS.length).fill(0),
-          bucketEntries: Array.from({ length: BONUS_BUCKETS.length }, () => []),
-          missionsDone: claimsCountByUser.get(entry.userId) ?? 0,
-          bonusEarned: realCycleTotal,
-          totalPoints: realCycleTotal,
-        });
+    const bucketUserBest = Array.from(
+      { length: BONUS_BUCKETS.length },
+      () => new Map<string, Entry>(),
+    );
+
+    for (const a of approvedAssignments) {
+      const idx = getFullBucketIndex(a.deadline, a.submitAt!);
+      if (idx < 0 || idx >= BONUS_BUCKETS.length) continue;
+
+      const earlyMs = a.deadline.getTime() - a.submitAt!.getTime();
+      const entry: Entry = {
+        id: a.id,
+        assignmentId: a.id,
+        title: a.title,
+        deadline: a.deadline,
+        submitAt: a.submitAt!,
+        userId: a.userId,
+        name: a.user.nickname,
+        username: a.user.username,
+        reward: a.reward,
+        earlyMs,
+      };
+
+      const map = bucketUserBest[idx];
+      const prev = map.get(a.userId);
+
+      if (!prev) {
+        map.set(a.userId, entry);
+        continue;
       }
 
-      const userData = userMap.get(entry.userId)!;
-      userData.buckets[idx] = 1;
-      userData.bucketEntries[idx] = [
-        {
-          id: entry.id,
-          assignmentId: entry.assignmentId,
-          title: entry.title,
-          deadline: entry.deadline,
-          submitAt: entry.submitAt,
-          reward: entry.reward,
+      const isBetter =
+        idx < 4 ? entry.earlyMs > prev.earlyMs : entry.earlyMs < prev.earlyMs;
+
+      if (isBetter) {
+        map.set(a.userId, entry);
+      }
+    }
+
+    const allUserIds = new Set<string>();
+    bucketUserBest.forEach((map) => {
+      map.forEach((_, userId) => allUserIds.add(userId));
+    });
+
+    if (allUserIds.size === 0) {
+      return [];
+    }
+
+    const winnerIdsForQuery = Array.from(allUserIds);
+
+    type ScoreGroupByRecipient = {
+      recipient_id: string;
+      _sum: { score: number | null };
+    };
+
+    const [scoreGroups, claimsByUser] = await Promise.all([
+      prisma.score.groupBy({
+        by: ["recipient_id"],
+        where: {
+          recipient_id: { in: winnerIdsForQuery },
+          createdAt: { gte: cycleStart, lte: now },
         },
-      ];
-    });
-  }
+        _sum: { score: true },
+      }),
+      prisma.missionClaim.findMany({
+        where: {
+          userId: { in: winnerIdsForQuery },
+          claimedAt: { gte: cycleStart, lte: now },
+        },
+        select: { userId: true },
+      }),
+    ]);
 
-  const currentLeaderboard = Array.from(userMap.values())
-    .map((u) => ({
-      userId: u.userId,
-      name: u.name,
-      username: u.username,
-      buckets: u.buckets,
-      bucketEntries: u.bucketEntries,
-      missionsDone: u.missionsDone,
-      bonusEarned: u.bonusEarned,
-      totalPoints: u.totalPoints,
-      total: u.buckets.reduce((sum, c) => sum + c, 0),
-    }))
-    .sort((a, b) => {
-      for (let i = 0; i < BONUS_BUCKETS.length; i++) {
-        if ((b.buckets[i] ?? 0) !== (a.buckets[i] ?? 0)) {
-          return (b.buckets[i] ?? 0) - (a.buckets[i] ?? 0);
+    const cycleScoreTotals = new Map<string, number>();
+    (scoreGroups as ScoreGroupByRecipient[]).forEach((g) => {
+      cycleScoreTotals.set(g.recipient_id, g._sum?.score ?? 0);
+    });
+
+    const claimsCountByUser = new Map<string, number>();
+    claimsByUser.forEach((c) => {
+      claimsCountByUser.set(c.userId, (claimsCountByUser.get(c.userId) ?? 0) + 1);
+    });
+
+    const userMap = new Map<
+      string,
+      {
+        userId: string;
+        name: string;
+        username: string;
+        buckets: number[];
+        bucketEntries: any[][];
+        missionsDone: number;
+        bonusEarned: number;
+        totalPoints: number;
+      }
+    >();
+
+    for (let idx = 0; idx < bucketUserBest.length; idx++) {
+      const map = bucketUserBest[idx];
+      map.forEach((entry) => {
+        if (!userMap.has(entry.userId)) {
+          const realCycleTotal = cycleScoreTotals.get(entry.userId) ?? 0;
+          userMap.set(entry.userId, {
+            userId: entry.userId,
+            name: entry.name,
+            username: entry.username,
+            buckets: new Array(BONUS_BUCKETS.length).fill(0),
+            bucketEntries: Array.from({ length: BONUS_BUCKETS.length }, () => []),
+            missionsDone: claimsCountByUser.get(entry.userId) ?? 0,
+            bonusEarned: realCycleTotal,
+            totalPoints: realCycleTotal,
+          });
         }
-      }
-      if (b.bonusEarned !== a.bonusEarned) {
-        return b.bonusEarned - a.bonusEarned;
-      }
-      return b.missionsDone - a.missionsDone;
-    });
 
-  const prevSnapshot = await getPrevRankSnapshot();
-  const prevRankMap = new Map<string, number>(
-    prevSnapshot ? Object.entries(prevSnapshot.ranks) : [],
-  );
-
-  const rankedLeaderboard = currentLeaderboard.map((u, idx) => {
-    const currentRank = idx + 1;
-    const prevRank = prevRankMap.get(u.userId);
-
-    let rankTrend: { type: "up" | "down" | "same" | "new"; diff: number } = {
-      type: "same",
-      diff: 0,
-    };
-
-    if (prevRank === undefined) {
-      rankTrend = { type: "new", diff: 0 };
-    } else if (prevRank > currentRank) {
-      rankTrend = { type: "up", diff: prevRank - currentRank };
-    } else if (prevRank < currentRank) {
-      rankTrend = { type: "down", diff: currentRank - prevRank };
+        const userData = userMap.get(entry.userId)!;
+        userData.buckets[idx] = 1;
+        userData.bucketEntries[idx] = [
+          {
+            id: entry.id,
+            assignmentId: entry.assignmentId,
+            title: entry.title,
+            deadline: entry.deadline,
+            submitAt: entry.submitAt,
+            reward: entry.reward,
+          },
+        ];
+      });
     }
 
-    return {
-      rank: currentRank,
-      rankTrend,
-      ...u,
-    };
-  });
+    const currentLeaderboard = Array.from(userMap.values())
+      .map((u) => ({
+        userId: u.userId,
+        name: u.name,
+        username: u.username,
+        buckets: u.buckets,
+        bucketEntries: u.bucketEntries,
+        missionsDone: u.missionsDone,
+        bonusEarned: u.bonusEarned,
+        totalPoints: u.totalPoints,
+        total: u.buckets.reduce((sum, c) => sum + c, 0),
+      }))
+      .sort((a, b) => {
+        for (let i = 0; i < BONUS_BUCKETS.length; i++) {
+          if ((b.buckets[i] ?? 0) !== (a.buckets[i] ?? 0)) {
+            return (b.buckets[i] ?? 0) - (a.buckets[i] ?? 0);
+          }
+        }
+        if (b.bonusEarned !== a.bonusEarned) {
+          return b.bonusEarned - a.bonusEarned;
+        }
+        return b.missionsDone - a.missionsDone;
+      });
 
-  const currentRanksForSnapshot: Record<string, number> = {};
-  rankedLeaderboard.forEach((u) => {
-    currentRanksForSnapshot[u.userId] = u.rank;
-  });
-  await maybeRefreshRankSnapshot(currentRanksForSnapshot, prevSnapshot);
+    const prevSnapshot = await getPrevRankSnapshot();
+    const prevRankMap = new Map<string, number>(
+      prevSnapshot ? Object.entries(prevSnapshot.ranks) : [],
+    );
 
-  return rankedLeaderboard;
+    const rankedLeaderboard = currentLeaderboard.map((u, idx) => {
+      const currentRank = idx + 1;
+      const prevRank = prevRankMap.get(u.userId);
+
+      let rankTrend: { type: "up" | "down" | "same" | "new"; diff: number } = {
+        type: "same",
+        diff: 0,
+      };
+
+      if (prevRank === undefined) {
+        rankTrend = { type: "new", diff: 0 };
+      } else if (prevRank > currentRank) {
+        rankTrend = { type: "up", diff: prevRank - currentRank };
+      } else if (prevRank < currentRank) {
+        rankTrend = { type: "down", diff: currentRank - prevRank };
+      }
+
+      return {
+        rank: currentRank,
+        rankTrend,
+        ...u,
+      };
+    });
+
+    const currentRanksForSnapshot: Record<string, number> = {};
+    rankedLeaderboard.forEach((u) => {
+      currentRanksForSnapshot[u.userId] = u.rank;
+    });
+    await maybeRefreshRankSnapshot(currentRanksForSnapshot, prevSnapshot);
+
+    return rankedLeaderboard;
+  } catch (error) {
+    console.error("Error in getBonusLeaderboard:", error);
+    return [];
+  }
 }
 
 async function getLevelUpWindowState(userId: string, now: Date) {
@@ -283,7 +274,10 @@ async function getLevelUpWindowState(userId: string, now: Date) {
   ]);
 
   const totalScore = Math.max(0, agg._sum.score ?? 0);
-  const currentIdx = levels.findIndex((l) => totalScore >= l.minScore && totalScore <= l.maxScore);
+  const currentIdx = levels.length > 0
+    ? levels.findIndex((l) => totalScore >= l.minScore && totalScore <= l.maxScore)
+    : 0;
+  const safeCurrentIdx = currentIdx < 0 ? 0 : currentIdx;
 
   let win = await prisma.missionWindow.findUnique({
     where: { userId_missionId: { userId, missionId: "level-up" } },
@@ -292,7 +286,7 @@ async function getLevelUpWindowState(userId: string, now: Date) {
   if (!win) {
     try {
       win = await prisma.missionWindow.create({
-        data: { userId, missionId: "level-up", windowStart: now, referenceLevelIdx: currentIdx },
+        data: { userId, missionId: "level-up", windowStart: now, referenceLevelIdx: safeCurrentIdx },
       });
     } catch {
       win = await prisma.missionWindow.findUnique({
@@ -302,21 +296,25 @@ async function getLevelUpWindowState(userId: string, now: Date) {
   }
 
   if (!win) {
-    return { completed: false, currentIdx, windowStart: now, levels };
+    return { completed: false, currentIdx: safeCurrentIdx, windowStart: now, levels };
   }
 
   const expired = now.getTime() - win.windowStart.getTime() > LEVEL_UP_WINDOW_MS;
-  const leveledUp = currentIdx > win.referenceLevelIdx;
+  const leveledUp = safeCurrentIdx > win.referenceLevelIdx;
 
   if (expired && !leveledUp) {
-    win = await prisma.missionWindow.update({
-      where: { id: win.id },
-      data: { windowStart: now, referenceLevelIdx: currentIdx },
-    });
-    return { completed: false, currentIdx, windowStart: win.windowStart, levels };
+    try {
+      win = await prisma.missionWindow.update({
+        where: { id: win.id },
+        data: { windowStart: now, referenceLevelIdx: safeCurrentIdx },
+      });
+    } catch (err) {
+      console.error("Failed to update expired level-up window:", err);
+    }
+    return { completed: false, currentIdx: safeCurrentIdx, windowStart: win?.windowStart ?? now, levels };
   }
 
-  return { completed: leveledUp, currentIdx, windowStart: win.windowStart, levels };
+  return { completed: leveledUp, currentIdx: safeCurrentIdx, windowStart: win.windowStart, levels };
 }
 
 async function autoClaimUnclaimedPreviousMonth(
@@ -351,13 +349,7 @@ async function autoClaimUnclaimedPreviousMonth(
         user: { role: "INTERN" },
       },
     }),
-    getConsistencyProStreak(
-      prisma as any,
-      username,
-      prevMonthEnd,
-      8,
-      prevMonthStart,
-    ),
+    safeGetConsistencyStreak(username, prevMonthEnd, 8, prevMonthStart),
     prisma.assignment.findMany({
       where: { userId, deadline: { gte: prevPrevMonthStart, lte: prevPrevMonthEnd } },
     }),
@@ -366,15 +358,16 @@ async function autoClaimUnclaimedPreviousMonth(
   const prevSubmitted = prevAssignments.filter((a) => a.status !== "Pending");
   const prevApproved = prevAssignments.filter((a) => a.status === "Approved");
   const prevRejected = prevAssignments.filter((a) => a.status === "Rejected");
-  const prevLateCount = prevSubmitted.filter((a) => a.submitAt > a.deadline).length;
+  const prevLateCount = prevSubmitted.filter((a) => a.submitAt && a.submitAt > a.deadline).length;
 
   const prevAvgScorePct =
     prevApproved.length > 0
       ? prevApproved.reduce((sum, a) => sum + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) /
-      prevApproved.length
+        prevApproved.length
       : 0;
 
   const prevFirstResponderCount = prevSubmitted.filter((a) => {
+    if (!a.submitAt) return false;
     const diffHours = (a.submitAt.getTime() - a.createdAt.getTime()) / (1000 * 60 * 60);
     return diffHours >= 0 && diffHours <= 24;
   }).length;
@@ -394,11 +387,11 @@ async function autoClaimUnclaimedPreviousMonth(
   );
 
   const prevPrevSubmitted = prevPrevAssignments.filter((a) => a.status !== "Pending");
-  const prevPrevLateCount = prevPrevSubmitted.filter((a) => a.submitAt > a.deadline).length;
+  const prevPrevLateCount = prevPrevSubmitted.filter((a) => a.submitAt && a.submitAt > a.deadline).length;
   const comebackKidCompleted = prevPrevLateCount >= 3 && prevLateCount === 0;
 
   const finalStates: { id: string; isCompleted: boolean; rewardPoints: number; name: string }[] = [
-    { id: "speed-runner", isCompleted: prevApproved.filter((a) => a.submitAt <= a.deadline).length >= 10, rewardPoints: 1500, name: "Speed Runner" },
+    { id: "speed-runner", isCompleted: prevApproved.filter((a) => a.submitAt && a.submitAt <= a.deadline).length >= 10, rewardPoints: 1500, name: "Speed Runner" },
     { id: "perfect-month", isCompleted: prevLateCount === 0 && prevApproved.length >= 5 && prevAvgScorePct >= 80, rewardPoints: 1500, name: "Perfect Month" },
     { id: "first-responder", isCompleted: prevFirstResponderCount >= 3, rewardPoints: 500, name: "First Responder" },
     { id: "quality-king", isCompleted: prevQualityKingCurrent >= 8, rewardPoints: 1000, name: "Quality King" },
@@ -559,16 +552,17 @@ export async function GET(request: NextRequest) {
     const perfectMonthCycleStart = cycleStartOf("perfect-month");
     const approvedForPerfect = approved.filter((a) => a.deadline >= perfectMonthCycleStart && a.updatedAt >= perfectMonthCycleStart);
     const submittedForPerfect = submitted.filter((a) => a.deadline >= perfectMonthCycleStart);
-    const lateCountForPerfect = submittedForPerfect.filter((a) => a.submitAt > a.deadline).length;
+    const lateCountForPerfect = submittedForPerfect.filter((a) => a.submitAt && a.submitAt > a.deadline).length;
     const avgScorePctForPerfect =
       approvedForPerfect.length > 0
         ? approvedForPerfect.reduce((sum, a) => sum + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) /
-        approvedForPerfect.length
+          approvedForPerfect.length
         : 0;
     const perfectMonth = lateCountForPerfect === 0 && approvedForPerfect.length >= 5 && avgScorePctForPerfect >= 80;
 
     const firstResponderCycleStart = cycleStartOf("first-responder");
     const firstResponderCount = submitted.filter((a) => {
+      if (!a.submitAt) return false;
       if (a.deadline < firstResponderCycleStart || a.submitAt < firstResponderCycleStart) return false;
       const diffHours = (a.submitAt.getTime() - a.createdAt.getTime()) / (1000 * 60 * 60);
       return diffHours >= 0 && diffHours <= 24;
@@ -592,8 +586,6 @@ export async function GET(request: NextRequest) {
     const consistencyTarget = 8;
     function streakCycleStartOf(missionId: string): Date {
       const claimedAt = lastClaimedAtMap.get(missionId);
-      // เคย claim ในเดือนนี้แล้ว -> เริ่มรอบใหม่จริงตามที่ user กด Claim
-      // ยังไม่เคย claim -> ปล่อยให้ streak ย้อนข้ามเดือนได้ ไม่ตัดที่ monthStart
       if (claimedAt && claimedAt > MISSION_TRACKING_START) return claimedAt;
       return MISSION_TRACKING_START;
     }
@@ -609,8 +601,7 @@ export async function GET(request: NextRequest) {
           deadline: { gte: speedRunnerEffectiveStart, lte: monthEnd },
         },
       }),
-      getConsistencyProStreak(
-        prisma as any,
+      safeGetConsistencyStreak(
         targetUsername,
         now,
         consistencyTarget,
@@ -625,7 +616,7 @@ export async function GET(request: NextRequest) {
         },
       }),
     ]);
-    const speedRunnerCurrent = speedRunnerAssignments.filter((a) => a.submitAt <= a.deadline && a.updatedAt >= speedRunnerCycleStart).length;
+    const speedRunnerCurrent = speedRunnerAssignments.filter((a) => a.submitAt && a.submitAt <= a.deadline && a.updatedAt >= speedRunnerCycleStart).length;
     const speedRunnerTarget = 10;
     const reportProTarget = 20;
 
@@ -651,8 +642,8 @@ export async function GET(request: NextRequest) {
     }
 
     const levels = levelUpState.levels;
-    const curLv = levels[levelUpState.currentIdx];
-    const nextLv = levels[levelUpState.currentIdx + 1];
+    const curLv = levels[levelUpState.currentIdx] ?? null;
+    const nextLv = levels[levelUpState.currentIdx + 1] ?? null;
     const levelUpDaysLeft = Math.max(
       0,
       Math.ceil((LEVEL_UP_WINDOW_MS - (now.getTime() - levelUpState.windowStart.getTime())) / (1000 * 60 * 60 * 24)),
@@ -660,9 +651,9 @@ export async function GET(request: NextRequest) {
     const levelUpCompleted = levelUpState.completed;
 
     const prevSubmitted = prevMonthAssignments.filter((a) => a.status !== "Pending");
-    const prevLateCount = prevSubmitted.filter((a) => a.submitAt > a.deadline).length;
+    const prevLateCount = prevSubmitted.filter((a) => a.submitAt && a.submitAt > a.deadline).length;
     const currentSubmitted = monthAssignments.filter((a) => a.status !== "Pending");
-    const currentLateCount = currentSubmitted.filter((a) => a.submitAt > a.deadline).length;
+    const currentLateCount = currentSubmitted.filter((a) => a.submitAt && a.submitAt > a.deadline).length;
     const comebackKid = prevLateCount >= 3 && currentLateCount === 0;
 
     const bonusLeaderboard = await getBonusLeaderboard(bonusCycleStart, now);

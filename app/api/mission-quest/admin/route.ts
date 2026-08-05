@@ -5,7 +5,12 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(request: NextRequest) {
   try {
     const authResult = await isAuthorize(request);
-    if (authResult.error || authResult.user?.role !== "SUPER_ADMIN") {
+    
+    if (authResult.error || !authResult.user) {
+      return NextResponse.json({ error: authResult.error || "Unauthorized" }, { status: 401 });
+    }
+
+    if (authResult.user.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "Access denied." }, { status: 403 });
     }
 
@@ -20,30 +25,53 @@ export async function GET(request: NextRequest) {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // ── KPI: Claims ──
-    const [claimsToday, pointsToday, claimsThisMonth, activeStaffCount] = await Promise.all([
+    // Filter Where Objects
+    const claimWhere: any = {};
+    if (missionId) claimWhere.missionId = missionId;
+    if (userId) claimWhere.userId = userId;
+
+    const overdueWhere: any = {
+      reviewer: "Overdue Deduction",
+      assignment_title: "Redeem overdue minutes",
+    };
+    if (userId) overdueWhere.recipient_id = userId;
+
+    // รัน Query ทั้งหมดขนานกันใน Promise.all
+    const [
+      claimsToday,
+      pointsToday,
+      claimsThisMonth,
+      activeStaffCount,
+      topMissionGroup,
+      overdueToday,
+      overdueThisMonth,
+      claims,
+      totalClaims,
+      overdueRows,
+      missionSummary,
+    ] = await Promise.all([
       prisma.missionClaim.count({ where: { claimedAt: { gte: todayStart } } }),
+      
       prisma.missionClaim.aggregate({
         where: { claimedAt: { gte: todayStart } },
         _sum: { points: true },
       }),
+
       prisma.missionClaim.count({ where: { claimedAt: { gte: monthStart } } }),
+
       prisma.missionClaim.groupBy({
         by: ["userId"],
         where: { claimedAt: { gte: monthStart } },
       }),
-    ]);
 
-    const topMissionGroup = await prisma.missionClaim.groupBy({
-      by: ["missionId"],
-      where: { claimedAt: { gte: monthStart } },
-      _count: { missionId: true },
-      orderBy: { _count: { missionId: "desc" } },
-      take: 1,
-    });
+      prisma.missionClaim.groupBy({
+        by: ["missionId"],
+        where: { claimedAt: { gte: monthStart } },
+        _count: { missionId: true },
+        orderBy: { _count: { missionId: "desc" } },
+        take: 1,
+      }),
 
-    // ── KPI: Overdue (แต้มที่ใช้ไป) ──
-    const [overdueToday, overdueThisMonth] = await Promise.all([
       prisma.score.aggregate({
         where: {
           reviewer: "Overdue Deduction",
@@ -53,6 +81,7 @@ export async function GET(request: NextRequest) {
         _sum: { score: true },
         _count: true,
       }),
+
       prisma.score.aggregate({
         where: {
           reviewer: "Overdue Deduction",
@@ -62,14 +91,7 @@ export async function GET(request: NextRequest) {
         _sum: { score: true },
         _count: true,
       }),
-    ]);
 
-    // ── Claims Log ──
-    const claimWhere: any = {};
-    if (missionId) claimWhere.missionId = missionId;
-    if (userId) claimWhere.userId = userId;
-
-    const [claims, totalClaims] = await Promise.all([
       prisma.missionClaim.findMany({
         where: claimWhere,
         orderBy: { claimedAt: "desc" },
@@ -79,42 +101,32 @@ export async function GET(request: NextRequest) {
           user: { select: { id: true, nickname: true, username: true } },
         },
       }),
+
       prisma.missionClaim.count({ where: claimWhere }),
+
+      // 🎯 แก้ไขจาก recipient -> user ให้ตรงกับ Prisma Schema
+      prisma.score.findMany({
+        where: overdueWhere,
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        select: {
+          id: true,
+          score: true,
+          recipient_id: true,
+          createdAt: true,
+          user: {
+            select: { id: true, nickname: true, username: true },
+          },
+        },
+      }),
+
+      prisma.missionClaim.groupBy({
+        by: ["missionId"],
+        where: { claimedAt: { gte: monthStart } },
+        _count: { missionId: true },
+        _sum: { points: true },
+      }),
     ]);
-
-    // ── Overdue Log (รายการที่ใช้แต้ม) ──
-    const overdueWhere: any = {
-      reviewer: "Overdue Deduction",
-      assignment_title: "Redeem overdue minutes",
-    };
-    if (userId) overdueWhere.recipient_id = userId;
-
-    const overdueRows = await prisma.score.findMany({
-      where: overdueWhere,
-      orderBy: { createdAt: "desc" },
-      take: 50,
-      select: {
-        id: true,
-        score: true,
-        recipient_id: true,
-        createdAt: true,
-      },
-    });
-
-    // map ชื่อ user ของ overdue
-    const overdueUserIds = [...new Set(overdueRows.map((r) => r.recipient_id))];
-    const overdueUsers = await prisma.user.findMany({
-      where: { id: { in: overdueUserIds } },
-      select: { id: true, nickname: true, username: true },
-    });
-    const overdueUserMap = new Map(overdueUsers.map((u) => [u.id, u]));
-
-    const missionSummary = await prisma.missionClaim.groupBy({
-      by: ["missionId"],
-      where: { claimedAt: { gte: monthStart } },
-      _count: { missionId: true },
-      _sum: { points: true },
-    });
 
     return NextResponse.json({
       kpi: {
@@ -128,7 +140,6 @@ export async function GET(request: NextRequest) {
               count: topMissionGroup[0]._count.missionId,
             }
           : null,
-        // Overdue KPI
         overduePointsToday: Math.abs(overdueToday._sum.score ?? 0),
         overdueCountToday: overdueToday._count,
         overduePointsThisMonth: Math.abs(overdueThisMonth._sum.score ?? 0),
@@ -147,14 +158,13 @@ export async function GET(request: NextRequest) {
         claimedAt: c.claimedAt.toISOString(),
       })),
       overdue: overdueRows.map((r) => {
-        const u = overdueUserMap.get(r.recipient_id);
         const pointsUsed = Math.abs(r.score);
         return {
           id: r.id,
           userId: r.recipient_id,
-          nickname: u?.nickname ?? "-",
-          username: u?.username ?? "-",
-          points: r.score, // ติดลบ
+          nickname: r.user?.nickname ?? "-",
+          username: r.user?.username ?? "-",
+          points: r.score,
           pointsUsed,
           minutes: pointsUsed * 5,
           createdAt: r.createdAt.toISOString(),
