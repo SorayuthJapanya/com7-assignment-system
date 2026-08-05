@@ -1,12 +1,16 @@
 "use client";
 
 import { useState, useRef } from "react";
-import type { BonusTableData, MissionQuestKpis, BonusBucketMeta, BonusBucketEntry } from "@/types/mission-quest";
+import type { BonusTableData, MissionQuestKpis, BonusBucketEntry } from "@/types/mission-quest";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { CalendarRange, Target, Coins, RotateCcw } from "lucide-react";
+import { CalendarRange, Coins, RotateCcw } from "lucide-react";
 import { useAuthUser } from "@/contexts/auth-context";
 import type { IUser } from "@/types/auth";
+import { BONUS_BUCKETS } from "@/lib/bonus-buckets";
+
+// เปิด/ปิด mock ด้วยการแก้ true/false ตรงนี้
+const USE_MOCK_LEADERBOARD = false;
 
 const MODIFIER_STYLE: Record<"positive" | "neutral" | "negative", string> = {
   positive: "text-emerald-600 border-emerald-200 bg-emerald-50",
@@ -14,20 +18,190 @@ const MODIFIER_STYLE: Record<"positive" | "neutral" | "negative", string> = {
   negative: "text-red-600 border-red-200 bg-red-50",
 };
 
-// 🟢 ไล่สี badge หัวคอลัมน์ตามลำดับ: เขียวเข้ม (เร็วมาก) → เหลือง (เฉียดฉิว) → แดงเข้ม (สายมาก)
-// อ้างอิงตามตำแหน่ง index ของ buckets ที่ backend ส่งมา (เรียงจากเร็วสุดไปช้าสุด)
-const BUCKET_COLOR_BY_INDEX = [
-  "bg-green-600 text-white hover:bg-green-700",
-  "bg-green-400 text-green-950 hover:bg-green-500",
-  "bg-green-200 text-green-900 hover:bg-green-300",
-  "bg-amber-300 text-amber-950 hover:bg-amber-400",
-  "bg-orange-300 text-orange-950 hover:bg-orange-400",
-  "bg-red-400 text-white hover:bg-red-500",
-  "bg-red-600 text-white hover:bg-red-700",
+// สีหัวคอลัมน์ตามตัวอย่างในรูป
+const BUCKET_HEADER_STYLE = [
+  "bg-indigo-600 text-white hover:bg-indigo-700",       // >= 7 วัน
+  "bg-teal-500 text-white hover:bg-teal-600",           // >= 3 วัน
+  "bg-emerald-500 text-white hover:bg-emerald-600",     // >= 1 วัน
+  "bg-orange-400 text-white hover:bg-orange-500",       // ภายใน 24 ชม.
+  "bg-orange-500 text-white hover:bg-orange-600",       // 1–3 วัน
+  "bg-orange-600 text-white hover:bg-orange-700",       // 3–7 วัน
+  "bg-red-800 text-white hover:bg-red-900",             // 7+ วัน
 ];
 
-function getBucketBadgeClass(idx: number) {
-  return BUCKET_COLOR_BY_INDEX[idx] ?? "bg-slate-100 text-slate-600 hover:bg-slate-200/80";
+// ข้อความสั้นบนหัวคอลัมน์
+const BUCKET_HEADER_LABEL = [
+  "≥7 วัน",
+  "≥3 วัน",
+  "≥1 วัน",
+  "ภายใน 24 ชม.",
+  "1–3 วัน",
+  "3–7 วัน",
+  "7+ วัน",
+];
+
+// Mock ชุด เต็ม 7 buckets - 1 คนต่อ 1 bucket ตรงตามเงื่อนไขจริงของระบบ
+const MOCK_LEADERBOARD = [
+  {
+    rank: 1,
+    rankTrend: { type: "new" as const, diff: 0 },
+    userId: "u1",
+    name: "Ploy",
+    username: "Ploychan",
+    buckets: [1, 0, 0, 0, 0, 0, 0],
+    bucketEntries: [
+      [{ id: "a1", assignmentId: "a1", title: "รายงานสรุปยอดขาย Q3", deadline: new Date(Date.now() + 8 * 86400000).toISOString(), submitAt: new Date().toISOString(), reward: 150 }],
+      [], [], [], [], [], [],
+    ],
+    missionsDone: 3,
+    bonusEarned: 1950,
+    totalPoints: 2600,
+  },
+  {
+    rank: 2,
+    rankTrend: { type: "up" as const, diff: 1 },
+    userId: "u2",
+    name: "Nott",
+    username: "Nottapong",
+    buckets: [0, 1, 0, 0, 0, 0, 0],
+    bucketEntries: [
+      [],
+      [{ id: "b1", assignmentId: "b1", title: "ตรวจสอบเอกสารสัญญา", deadline: new Date(Date.now() + 4 * 86400000).toISOString(), submitAt: new Date().toISOString(), reward: 120 }],
+      [], [], [], [], [],
+    ],
+    missionsDone: 2,
+    bonusEarned: 1440,
+    totalPoints: 1900,
+  },
+  {
+    rank: 3,
+    rankTrend: { type: "same" as const, diff: 0 },
+    userId: "u3",
+    name: "Beam",
+    username: "Beam_wr",
+    buckets: [0, 0, 1, 0, 0, 0, 0],
+    bucketEntries: [
+      [], [],
+      [{ id: "c1", assignmentId: "c1", title: "อัปเดตฐานข้อมูลลูกค้า", deadline: new Date(Date.now() + 1 * 86400000).toISOString(), submitAt: new Date().toISOString(), reward: 100 }],
+      [], [], [], [],
+    ],
+    missionsDone: 2,
+    bonusEarned: 1100,
+    totalPoints: 1500,
+  },
+  {
+    rank: 4,
+    rankTrend: { type: "new" as const, diff: 0 },
+    userId: "u4",
+    name: "Ken",
+    username: "Kenta_p",
+    buckets: [0, 0, 0, 1, 0, 0, 0],
+    bucketEntries: [
+      [], [], [],
+      [{ id: "d1", assignmentId: "d1", title: "จัดเตรียมสไลด์นำเสนอลูกค้า", deadline: new Date().toISOString(), submitAt: new Date().toISOString(), reward: 100 }],
+      [], [], [],
+    ],
+    missionsDone: 1,
+    bonusEarned: 700,
+    totalPoints: 900,
+  },
+  {
+    rank: 5,
+    rankTrend: { type: "down" as const, diff: 2 },
+    userId: "u5",
+    name: "Mind",
+    username: "Mind_su",
+    buckets: [0, 0, 0, 0, 1, 0, 0],
+    bucketEntries: [
+      [], [], [], [],
+      [{ id: "e1", assignmentId: "e1", title: "แก้ไขบั๊กระบบ login", deadline: new Date(Date.now() - 2 * 86400000).toISOString(), submitAt: new Date().toISOString(), reward: 100 }],
+      [], [],
+    ],
+    missionsDone: 1,
+    bonusEarned: -300,
+    totalPoints: 800,
+  },
+  {
+    rank: 6,
+    rankTrend: { type: "same" as const, diff: 0 },
+    userId: "u6",
+    name: "Poomjai",
+    username: "Passakorn_pumisit",
+    buckets: [0, 0, 0, 0, 0, 1, 0],
+    bucketEntries: [
+      [], [], [], [], [],
+      [{ id: "f1", assignmentId: "f1", title: "รีวิวโค้ด PR #482", deadline: new Date(Date.now() - 5 * 86400000).toISOString(), submitAt: new Date().toISOString(), reward: 100 }],
+      [],
+    ],
+    missionsDone: 1,
+    bonusEarned: -500,
+    totalPoints: 650,
+  },
+  {
+    rank: 7,
+    rankTrend: { type: "down" as const, diff: 1 },
+    userId: "u7",
+    name: "Fah",
+    username: "Fahsai_k",
+    buckets: [0, 0, 0, 0, 0, 0, 1],
+    bucketEntries: [
+      [], [], [], [], [], [],
+      [{ id: "g1", assignmentId: "g1", title: "ส่งรายงานประจำเดือน", deadline: new Date(Date.now() - 9 * 86400000).toISOString(), submitAt: new Date().toISOString(), reward: 100 }],
+    ],
+    missionsDone: 1,
+    bonusEarned: -700,
+    totalPoints: 350,
+  },
+];
+
+const AVATAR_COLORS = [
+  "bg-blue-500",
+  "bg-teal-500",
+  "bg-indigo-500",
+  "bg-orange-500",
+  "bg-amber-600",
+  "bg-red-500",
+  "bg-rose-500",
+  "bg-violet-500",
+  "bg-sky-500",
+  "bg-emerald-500",
+];
+
+function avatarColor(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function RankBadge({ rank }: { rank: number }) {
+  if (rank === 1) {
+    return (
+      <span className="inline-flex size-7 items-center justify-center rounded-full bg-amber-50 text-base" title="#1">
+        🥇
+      </span>
+    );
+  }
+  if (rank === 2) {
+    return (
+      <span className="inline-flex size-7 items-center justify-center rounded-full bg-slate-100 text-base" title="#2">
+        🥈
+      </span>
+    );
+  }
+  if (rank === 3) {
+    return (
+      <span className="inline-flex size-7 items-center justify-center rounded-full bg-orange-50 text-base" title="#3">
+        🥉
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs font-semibold text-slate-400 tabular-nums">#{rank}</span>
+  );
+}
+
+function getBucketHeaderClass(idx: number) {
+  return BUCKET_HEADER_STYLE[idx] ?? "bg-slate-100 text-slate-600 hover:bg-slate-200/80";
 }
 
 function formatShortDate(iso: string | Date) {
@@ -75,7 +249,7 @@ function formatDiffDuration(totalMinutes: number | null): string {
 }
 
 interface TooltipState {
-  bucket: BonusBucketMeta;
+  bucket: (typeof BONUS_BUCKETS)[number];
   count?: number;
   entries?: BonusBucketEntry[];
   top: number;
@@ -190,13 +364,17 @@ export default function EarlyBirdBonusTable({ data, kpis, onResetSuccess }: Earl
   const [showConfirm, setShowConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
-  const buckets = data?.buckets ?? [];
-  const leaderboard: any[] = (data?.leaderboard as any) ?? [];
+  const buckets =
+    data?.buckets && data.buckets.length > 0 ? data.buckets : BONUS_BUCKETS;
+
+  const realLeaderboard: any[] = (data?.leaderboard as any) ?? [];
+  const leaderboard = USE_MOCK_LEADERBOARD ? MOCK_LEADERBOARD : realLeaderboard;
+
   const cycleRangeLabel = formatCycleRange(data?.cycleStart);
 
   function handleMouseEnter(
     e: React.MouseEvent<HTMLElement>,
-    bucket: BonusBucketMeta,
+    bucket: (typeof BONUS_BUCKETS)[number],
     count?: number,
     entries?: BonusBucketEntry[],
     type: "header" | "cell" = "cell"
@@ -261,7 +439,12 @@ export default function EarlyBirdBonusTable({ data, kpis, onResetSuccess }: Earl
     <Card className="rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
       <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between flex-wrap gap-2">
         <CardTitle className="text-sm font-bold flex items-center gap-2">
-          💰 Early Bird Bonus Leaderboard
+          Early Bird Bonus Leaderboard
+          {USE_MOCK_LEADERBOARD && (
+            <span className="text-[10px] font-semibold uppercase tracking-wide rounded bg-amber-100 text-amber-700 px-1.5 py-0.5">
+              Mock
+            </span>
+          )}
         </CardTitle>
 
         <div className="flex items-center gap-2">
@@ -287,20 +470,12 @@ export default function EarlyBirdBonusTable({ data, kpis, onResetSuccess }: Earl
       </CardHeader>
 
       <CardContent className="pt-4 px-3 sm:px-6">
-        {/* 🟢 ใส่ overflow-x-auto เพื่อสร้าง Bar สไลด์เมื่อพื้นที่จอไม่พอ */}
         <div className="w-full overflow-x-auto pb-2">
-          {/* 🟢 กำหนด min-w-[850px] เพื่อไม่ให้ตารางโดนบีบจนตัดคำ */}
-          <table className="w-full min-w-[850px] text-sm border-collapse">
+          <table className="w-full min-w-[900px] text-sm border-collapse">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs text-slate-400 font-semibold">
-                <th className="py-2.5 pr-1 w-8 text-slate-500 align-bottom">#</th>
-                <th className="py-2.5 pr-2 w-32 text-slate-500 align-bottom">ชื่อ</th>
-                <th className="py-2.5 px-1 text-center text-slate-500 align-bottom">
-                  <span className="flex flex-col items-center justify-center gap-0.5 leading-tight">
-                    <Target className="size-3.5 text-violet-500" />
-                    <span className="text-[9px] whitespace-nowrap">Missions</span>
-                  </span>
-                </th>
+                <th className="py-2.5 pr-1 w-10 text-center text-slate-500 align-bottom">#</th>
+                <th className="py-2.5 pr-2 w-44 text-slate-500 align-bottom">ชื่อ</th>
                 {buckets.map((b, idx) => (
                   <th key={b.key} className="py-2.5 px-1 text-center align-bottom">
                     <span
@@ -308,14 +483,14 @@ export default function EarlyBirdBonusTable({ data, kpis, onResetSuccess }: Earl
                       onMouseLeave={handleMouseLeave}
                       className="inline-flex items-center justify-center cursor-default w-full"
                     >
-                      {/* 🟢 แสดงคำเต็ม 100% ห้ามตัดคำ ห้ามขึ้นบรรทัดใหม่ */}
                       <span
                         className={cn(
-                          "text-[10px] font-medium px-2 py-1.5 rounded-md whitespace-nowrap transition-colors inline-block",
-                          getBucketBadgeClass(idx)
+                          "inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-full whitespace-nowrap transition-colors",
+                          getBucketHeaderClass(idx)
                         )}
                       >
-                        {b.condition}
+                        <span className="text-sm leading-none">{b.emoji}</span>
+                        <span>{BUCKET_HEADER_LABEL[idx] ?? b.condition}</span>
                       </span>
                     </span>
                   </th>
@@ -331,7 +506,7 @@ export default function EarlyBirdBonusTable({ data, kpis, onResetSuccess }: Earl
             <tbody>
               {leaderboard.length === 0 && (
                 <tr>
-                  <td colSpan={buckets.length + 4} className="py-6 text-center text-xs text-slate-300">
+                  <td colSpan={buckets.length + 3} className="py-6 text-center text-xs text-slate-300">
                     ยังไม่มีข้อมูลในรอบนี้
                   </td>
                 </tr>
@@ -341,10 +516,9 @@ export default function EarlyBirdBonusTable({ data, kpis, onResetSuccess }: Earl
                   key={row.username}
                   className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60 transition-colors"
                 >
-                  <td className="py-3 pr-2">
-                    <div className="flex flex-col items-start gap-0.5">
-                      <span className="font-bold text-slate-400 text-xs">#{row.rank}</span>
-
+                  <td className="py-3 pr-2 text-center align-middle">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <RankBadge rank={row.rank} />
                       {row.rankTrend?.type === "up" && (
                         <span className="inline-flex items-center text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">
                           ▲{row.rankTrend.diff}
@@ -355,30 +529,33 @@ export default function EarlyBirdBonusTable({ data, kpis, onResetSuccess }: Earl
                           ▼{row.rankTrend.diff}
                         </span>
                       )}
-                      {row.rankTrend?.type === "same" && (
-                        <span className="inline-flex items-center text-[9px] font-bold text-slate-300 bg-slate-50 px-1 py-0.5 rounded">
-                          –
-                        </span>
-                      )}
-                      {row.rankTrend?.type === "new" && (
-                        <span className="inline-flex items-center text-[8px] font-extrabold text-blue-600 bg-blue-50 px-1 py-0.5 rounded border border-blue-100">
-                          NEW
-                        </span>
-                      )}
                     </div>
                   </td>
 
                   <td className="py-3 pr-3">
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-semibold text-slate-700 truncate text-xs sm:text-sm">{row.name}</span>
-                      <span className="text-[11px] text-slate-400 truncate">@{row.username}</span>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className={cn(
+                          "flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white",
+                          avatarColor(row.username || row.name || "")
+                        )}
+                      >
+                        {(row.name?.trim()?.[0] ?? "?").toUpperCase()}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-semibold text-slate-800 truncate text-xs sm:text-sm">
+                            {row.name}
+                          </span>
+                          {row.rankTrend?.type === "new" && (
+                            <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-extrabold uppercase tracking-wide bg-sky-100 text-sky-600 border border-sky-100">
+                              NEW
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-slate-400 truncate">@{row.username}</span>
+                      </div>
                     </div>
-                  </td>
-
-                  <td className="py-3 px-2 text-center">
-                    <span className="inline-block font-semibold text-[11px] text-slate-700 bg-slate-100/80 px-2 py-0.5 rounded-full whitespace-nowrap">
-                      {row.missionsDone ?? 0}/{kpis?.missionsTotal ?? 11}
-                    </span>
                   </td>
 
                   {buckets.map((b, idx) => {
@@ -396,18 +573,23 @@ export default function EarlyBirdBonusTable({ data, kpis, onResetSuccess }: Earl
                               : "text-slate-300 text-xs font-bold"
                           )}
                         >
-                          {count > 0 ? b.emoji : "–"}
+                          {count > 0 ? b.emoji : ""}
                         </span>
                       </td>
                     );
                   })}
 
                   <td className="py-3 pl-2 text-center font-bold text-xs">
-                    {(row.bonusEarned ?? 0) > 0 ? (
-                      <span className="text-emerald-600">+{row.bonusEarned.toLocaleString()}</span>
-                    ) : (
-                      <span className="text-slate-400">0</span>
-                    )}
+                    {(() => {
+                      const netBonus = row.bonusEarned ?? 0;
+                      if (netBonus > 0) {
+                        return <span className="text-emerald-600">+{netBonus.toLocaleString()}</span>;
+                      } else if (netBonus < 0) {
+                        return <span className="text-red-600">{netBonus.toLocaleString()}</span>;
+                      } else {
+                        return <span className="text-slate-400">0</span>;
+                      }
+                    })()}
                   </td>
                 </tr>
               ))}

@@ -52,6 +52,77 @@ export async function GET(
   }
 }
 
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    // isAuthorize
+    const authResult = await isAuthorize(request);
+
+    if (authResult.error) {
+      return NextResponse.json(
+        { error: authResult.error },
+        { status: authResult.status },
+      );
+    }
+
+    const authUser = authResult.user!;
+    const assignmentId = (await params).id;
+
+    // Get existing assignment
+    const existingAssignment = await prisma.assignment.findUnique({
+      where: { id: assignmentId },
+    });
+
+    if (!existingAssignment) {
+      return NextResponse.json(
+        { error: "Assignment not found" },
+        { status: 404 },
+      );
+    }
+
+    // Check permission: SUPER_ADMIN, Admin creator, or assigned user (STAFF/INTERN)
+    const isAssignee = existingAssignment.userId === authUser.id;
+    const isAdminCreator = authUser.role === "ADMIN" && existingAssignment.createdBy === authUser.username;
+
+    if (authUser.role !== "SUPER_ADMIN" && !isAdminCreator && !isAssignee) {
+      return NextResponse.json(
+        { error: "You are not authorized to submit this assignment" },
+        { status: 403 },
+      );
+    }
+
+    // Get body
+    const body = await request.json();
+    const { submissionUrl, feedback } = body;
+
+    const now = new Date();
+
+    // Update assignment with submission data
+    const updatedAssignment = await prisma.assignment.update({
+      where: { id: assignmentId },
+      data: {
+        ...(submissionUrl !== undefined && { submissionUrl }),
+        ...(feedback !== undefined && { feedback }),
+        submitAt: now,
+        status: "Pending",
+      },
+    });
+
+    return NextResponse.json({
+      message: "Assignment submitted successfully",
+      assignment: updatedAssignment,
+    });
+  } catch (error) {
+    console.error("Submit assignment error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },

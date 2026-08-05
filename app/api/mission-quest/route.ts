@@ -1,11 +1,16 @@
 import { isAuthorize } from "@/lib/middleware";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
-import { getBonusCycleStart, getPrevRankSnapshot, maybeRefreshRankSnapshot } from "@/lib/bonus-cycle";
+import {
+  getBonusCycleStart,
+  getPrevRankSnapshot,
+  maybeRefreshRankSnapshot,
+  getFullBucketIndex,
+} from "@/lib/bonus-cycle";
+import { BONUS_BUCKETS } from "@/lib/bonus-buckets";
 import type {
   MissionQuestResponse,
   Mission,
-  BonusBucketMeta,
   BonusBucketEntry,
 } from "@/types/mission-quest";
 import {
@@ -17,117 +22,150 @@ import {
   getConsistencyProStreak,
 } from "@/lib/mission-shared";
 
-const BONUS_BUCKETS: BonusBucketMeta[] = [
-  { key: "super_early", emoji: "🏅", situation: "ส่งเร็วมาก", condition: "ก่อน deadline ≥ 7 วัน", modifierLabel: "+30%", modifierType: "positive", exampleReward: 130 },
-  { key: "early", emoji: "🥈", situation: "ส่งเร็ว", condition: "ก่อน deadline ≥ 3 วัน", modifierLabel: "+20%", modifierType: "positive", exampleReward: 120 },
-  { key: "before", emoji: "🥉", situation: "ส่งก่อน", condition: "ก่อน deadline ≥ 1 วัน", modifierLabel: "+10%", modifierType: "positive", exampleReward: 110 },
-  { key: "ontime", emoji: "⏱️", situation: "ตรงเวลา", condition: "ภายใน 24 ชม. ก่อน deadline", modifierLabel: "+0%", modifierType: "neutral", exampleReward: 100 },
-  { key: "late_minor", emoji: "⚠️", situation: "สายเล็กน้อย", condition: "สาย 1–3 วัน", modifierLabel: "-10%", modifierType: "negative", exampleReward: 90 },
-  { key: "late_major", emoji: "🚨", situation: "สายมาก", condition: "สาย 3–7 วัน", modifierLabel: "-25%", modifierType: "negative", exampleReward: 75 },
-  { key: "late_worst", emoji: "❌", situation: "สายมากที่สุด", condition: "สาย 7+ วัน", modifierLabel: "-50%", modifierType: "negative", exampleReward: 50 },
-];
-
-const BONUS_PCT = [0.3, 0.2, 0.1, 0, -0.1, -0.25, -0.5];
-
-// NOTE: MISSION_TRACKING_START, LEVEL_UP_WINDOW_MS, THREE_DAYS_MS,
-// RESETTABLE_MISSION_IDS and clampStart() now come from lib/mission-shared.ts.
-// Do NOT re-declare local copies here — that drift (specifically
-// RESETTABLE_MISSION_IDS disagreeing with the redeem route about
-// "no-backlog") was the root cause of the double-claim / can't-claim bugs.
 const AUTO_CLAIM_DEPLOY_START = MISSION_TRACKING_START;
 
 function pct(current: number, target: number) {
   return target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
 }
 
-function getBonusBucketIndex(deadline: Date, submitAt: Date): number {
-  const diffMs = deadline.getTime() - submitAt.getTime();
-  const diffHours = diffMs / (1000 * 60 * 60);
-  const diffDays = diffHours / 24;
-
-  if (diffDays >= 7) return 0;
-  if (diffDays >= 3) return 1;
-  if (diffDays >= 1) return 2;
-  if (diffHours >= 0) return 3;
-  if (diffDays >= -3) return 4;
-  if (diffDays >= -7) return 5;
-  return 6;
-}
-
 async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> {
-  const approvedAssignments = await prisma.assignment.findMany({
-    where: {
-      status: "Approved",
-      deadline: { gte: cycleStart, lte: now },
-      user: { role: "STAFF" },
-    },
-    include: { user: { select: { id: true, nickname: true, username: true } } },
-  });
+  const approvedAssignments = (
+    await prisma.assignment.findMany({
+      where: {
+        status: "Approved",
+        // 🔁 CHANGED: was `deadline: { gte: cycleStart }` only.
+        //
+        // Two groups of assignments legitimately belong to "this cycle"
+        // and both need to be included, or entries silently vanish:
+        //  1. Normal case — deadline falls within the cycle (assignment
+        //     was assigned during this cycle).
+        //  2. Edge case — deadline falls BEFORE the cycle started, but the
+        //     assignment was submitted/approved/scored DURING this cycle
+        //     (e.g. deadline 29/07, submitted 05/08, cycle started 01/08).
+        //     The Score entry (Record Bonus / Late Penalty) was already
+        //     created for them regardless of cycle boundaries (see
+        //     maybeAwardRecordBonus / maybeApplyLatePenalty, which never
+        //     gate on the assignment's OWN deadline), so they need to show
+        //     up here too or the score and the bucket badge disagree.
+        //
+        // Filtering by `submitAt` ALONE (previous attempt) fixed case 2
+        // but broke case 1: any assignment whose deadline is in-cycle but
+        // was submitted before the cycle started (e.g. right after a
+        // Reset) got excluded even though it always used to show. Using
+        // OR covers both groups without dropping anyone.
+        OR: [
+          { deadline: { gte: cycleStart } },
+          { submitAt: { gte: cycleStart } },
+        ],
+        user: { role: "STAFF" },
+      },
+      include: {
+        user: { select: { id: true, nickname: true, username: true } },
+      },
+    })
+  ).filter((a) => a.submitAt != null);
 
-  const bucketWinners: (BonusBucketEntry & { userId: string; name: string; username: string })[] = [];
+  // ── เปลี่ยนจาก "1 winner / bucket" → "ทุกคนที่มีงานใน bucket นั้น" ──
+  // key = `${userId}:${bucketIdx}`
+  type Entry = {
+    id: string;
+    assignmentId: string;
+    title: string;
+    deadline: Date;
+    submitAt: Date;
+    userId: string;
+    name: string;
+    username: string;
+    reward: number;
+    earlyMs: number; // deadline - submitAt (บวก = ส่งก่อน, ลบ = สาย)
+  };
 
-  BONUS_BUCKETS.forEach((_, idx) => {
-    const matched = approvedAssignments.filter(
-      (a) => getBonusBucketIndex(a.deadline, a.submitAt) === idx
-    );
+  // bucketIdx → Map<userId, best Entry ของคนนั้นใน bucket นี้>
+  const bucketUserBest = Array.from(
+    { length: BONUS_BUCKETS.length },
+    () => new Map<string, Entry>(),
+  );
 
-    if (matched.length > 0) {
-      matched.sort((a, b) => {
-        const earlyMsA = a.deadline.getTime() - a.submitAt.getTime();
-        const earlyMsB = b.deadline.getTime() - b.submitAt.getTime();
+  for (const a of approvedAssignments) {
+    const idx = getFullBucketIndex(a.deadline, a.submitAt!);
+    if (idx < 0 || idx >= BONUS_BUCKETS.length) continue;
 
-        if (idx < 4) {
-          return earlyMsB - earlyMsA;
-        } else {
-          return earlyMsA - earlyMsB;
-        }
-      });
+    const earlyMs = a.deadline.getTime() - a.submitAt!.getTime();
+    const entry: Entry = {
+      id: a.id,
+      assignmentId: a.id,
+      title: a.title,
+      deadline: a.deadline,
+      submitAt: a.submitAt!,
+      userId: a.userId,
+      name: a.user.nickname,
+      username: a.user.username,
+      reward: a.reward,
+      earlyMs,
+    };
 
-      const best = matched[0];
-      bucketWinners[idx] = {
-        id: best.id,
-        assignmentId: best.id,
-        title: best.title,
-        deadline: best.deadline,
-        submitAt: best.submitAt,
-        userId: best.userId,
-        name: best.user.nickname,
-        username: best.user.username,
-        reward: best.reward,
-      } as any;
+    const map = bucketUserBest[idx];
+    const prev = map.get(a.userId);
+
+    if (!prev) {
+      map.set(a.userId, entry);
+      continue;
     }
+
+    // early buckets (0-3): เก็บสถิติที่ "เร็วที่สุด" (earlyMs มากสุด)
+    // late buckets (4-6): เก็บสถิติที่ "ช้าที่สุด" (earlyMs น้อยสุด / ติดลบมากสุด)
+    const isBetter =
+      idx < 4 ? entry.earlyMs > prev.earlyMs : entry.earlyMs < prev.earlyMs;
+
+    if (isBetter) {
+      map.set(a.userId, entry);
+    }
+  }
+
+  // รวบรวม user ทั้งหมดที่ติดอย่างน้อย 1 bucket
+  const allUserIds = new Set<string>();
+  bucketUserBest.forEach((map) => {
+    map.forEach((_, userId) => allUserIds.add(userId));
   });
 
-  const winnerUserIds = Array.from(new Set(bucketWinners.filter(Boolean).map((w) => w!.userId)));
+  if (allUserIds.size === 0) {
+    return [];
+  }
 
-  // คะแนนจาก Assignment เท่านั้น (ฐาน + โบนัส %)
-  const userAssignmentTotalWithBonus = new Map<string, number>();
-  approvedAssignments.forEach((a) => {
-    const idx = getBonusBucketIndex(a.deadline, a.submitAt);
-    const totalScoreForAssignment = Math.round((a.reward ?? 0) * (1 + BONUS_PCT[idx]));
-    userAssignmentTotalWithBonus.set(
-      a.userId,
-      (userAssignmentTotalWithBonus.get(a.userId) ?? 0) + totalScoreForAssignment
-    );
-  });
+  const winnerIdsForQuery = Array.from(allUserIds);
 
-  // ❌ ลบ userClaimBonusTotals / missionClaimSums ออกแล้ว
-  // bonusEarned นับเฉพาะ Assignment ไม่รวม Mission Claim
+  type ScoreGroupByRecipient = {
+    recipient_id: string;
+    _sum: { score: number | null };
+  };
 
-  const cycleScoreTotals = new Map<string, number>();
-  if (winnerUserIds.length > 0) {
-    const scoreGroups = await prisma.score.groupBy({
+  const [scoreGroups, claimsByUser] = await Promise.all([
+    prisma.score.groupBy({
       by: ["recipient_id"],
       where: {
-        recipient_id: { in: winnerUserIds },
+        recipient_id: { in: winnerIdsForQuery },
         createdAt: { gte: cycleStart, lte: now },
       },
       _sum: { score: true },
-    });
-    scoreGroups.forEach((g) => {
-      cycleScoreTotals.set(g.recipient_id, g._sum.score ?? 0);
-    });
-  }
+    }),
+    prisma.missionClaim.findMany({
+      where: {
+        userId: { in: winnerIdsForQuery },
+        claimedAt: { gte: cycleStart, lte: now },
+      },
+      select: { userId: true },
+    }),
+  ]);
+
+  const cycleScoreTotals = new Map<string, number>();
+  (scoreGroups as ScoreGroupByRecipient[]).forEach((g) => {
+    cycleScoreTotals.set(g.recipient_id, g._sum?.score ?? 0);
+  });
+
+  const claimsCountByUser = new Map<string, number>();
+  claimsByUser.forEach((c) => {
+    claimsCountByUser.set(c.userId, (claimsCountByUser.get(c.userId) ?? 0) + 1);
+  });
 
   const userMap = new Map<
     string,
@@ -136,41 +174,44 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
       name: string;
       username: string;
       buckets: number[];
-      bucketEntries: BonusBucketEntry[][];
+      bucketEntries: any[][];
       missionsDone: number;
       bonusEarned: number;
       totalPoints: number;
     }
   >();
 
-  for (let idx = 0; idx < bucketWinners.length; idx++) {
-    const winner = bucketWinners[idx];
-    if (!winner) continue;
+  // สร้างแถวต่อ user — คนเดียวติดได้หลาย bucket
+  for (let idx = 0; idx < bucketUserBest.length; idx++) {
+    const map = bucketUserBest[idx];
+    map.forEach((entry) => {
+      if (!userMap.has(entry.userId)) {
+        const realCycleTotal = cycleScoreTotals.get(entry.userId) ?? 0;
+        userMap.set(entry.userId, {
+          userId: entry.userId,
+          name: entry.name,
+          username: entry.username,
+          buckets: new Array(BONUS_BUCKETS.length).fill(0),
+          bucketEntries: Array.from({ length: BONUS_BUCKETS.length }, () => []),
+          missionsDone: claimsCountByUser.get(entry.userId) ?? 0,
+          bonusEarned: realCycleTotal,
+          totalPoints: realCycleTotal,
+        });
+      }
 
-    if (!userMap.has(winner.userId)) {
-      // คอลัมน์ Missions ยังนับจาก claim ตามเดิม
-      const claimedMissions = await prisma.missionClaim.findMany({
-        where: { userId: winner.userId, claimedAt: { gte: cycleStart, lte: now } },
-      });
-
-      // ✅ นับเฉพาะคะแนนจาก Assignment
-      const assignmentScoreWithBonus = userAssignmentTotalWithBonus.get(winner.userId) ?? 0;
-
-      userMap.set(winner.userId, {
-        userId: winner.userId,
-        name: winner.name,
-        username: winner.username,
-        buckets: new Array(BONUS_BUCKETS.length).fill(0),
-        bucketEntries: Array.from({ length: BONUS_BUCKETS.length }, () => []),
-        missionsDone: claimedMissions.length,
-        bonusEarned: assignmentScoreWithBonus,
-        totalPoints: cycleScoreTotals.get(winner.userId) ?? 0,
-      });
-    }
-
-    const userData = userMap.get(winner.userId)!;
-    userData.buckets[idx] = 1;
-    userData.bucketEntries[idx] = [winner];
+      const userData = userMap.get(entry.userId)!;
+      userData.buckets[idx] = 1;
+      userData.bucketEntries[idx] = [
+        {
+          id: entry.id,
+          assignmentId: entry.assignmentId,
+          title: entry.title,
+          deadline: entry.deadline,
+          submitAt: entry.submitAt,
+          reward: entry.reward,
+        },
+      ];
+    });
   }
 
   const currentLeaderboard = Array.from(userMap.values())
@@ -199,7 +240,7 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
 
   const prevSnapshot = await getPrevRankSnapshot();
   const prevRankMap = new Map<string, number>(
-    prevSnapshot ? Object.entries(prevSnapshot.ranks) : []
+    prevSnapshot ? Object.entries(prevSnapshot.ranks) : [],
   );
 
   const rankedLeaderboard = currentLeaderboard.map((u, idx) => {
@@ -236,9 +277,12 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
 }
 
 async function getLevelUpWindowState(userId: string, now: Date) {
-  const levels = await prisma.level.findMany({ orderBy: { minScore: "asc" } });
-  const agg = await prisma.score.aggregate({ where: { recipient_id: userId }, _sum: { score: true } });
-  const totalScore = agg._sum.score ?? 0;
+  const [levels, agg] = await Promise.all([
+    prisma.level.findMany({ orderBy: { minScore: "asc" } }),
+    prisma.score.aggregate({ where: { recipient_id: userId }, _sum: { score: true } }),
+  ]);
+
+  const totalScore = Math.max(0, agg._sum.score ?? 0);
   const currentIdx = levels.findIndex((l) => totalScore >= l.minScore && totalScore <= l.maxScore);
 
   let win = await prisma.missionWindow.findUnique({
@@ -278,6 +322,7 @@ async function getLevelUpWindowState(userId: string, now: Date) {
 async function autoClaimUnclaimedPreviousMonth(
   userId: string,
   nickname: string,
+  username: string,
   prevMonthStart: Date,
   prevMonthEnd: Date,
   prevMonthNum: number,
@@ -286,9 +331,38 @@ async function autoClaimUnclaimedPreviousMonth(
   if (prevMonthEnd < MISSION_TRACKING_START) return;
   if (prevMonthStart < AUTO_CLAIM_DEPLOY_START) return;
 
-  const prevAssignments = await prisma.assignment.findMany({
-    where: { userId, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
-  });
+  const prevPrevMonthStart = clampStart(new Date(prevMonthStart.getFullYear(), prevMonthStart.getMonth() - 1, 1));
+  const prevPrevMonthEnd = new Date(prevMonthStart.getFullYear(), prevMonthStart.getMonth(), 0, 23, 59, 59);
+
+  const [
+    prevAssignments,
+    prevReviewedCount,
+    prevConsistencyStreak,
+    prevPrevAssignments,
+  ] = await Promise.all([
+    prisma.assignment.findMany({
+      where: { userId, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
+    }),
+    prisma.dailyReport.count({
+      where: {
+        reviewedBy: username,
+        status: { in: ["Approved", "Rejected"] },
+        updatedAt: { gte: prevMonthStart, lte: prevMonthEnd },
+        user: { role: "INTERN" },
+      },
+    }),
+    getConsistencyProStreak(
+      prisma as any,
+      username,
+      prevMonthEnd,
+      8,
+      prevMonthStart,
+    ),
+    prisma.assignment.findMany({
+      where: { userId, deadline: { gte: prevPrevMonthStart, lte: prevPrevMonthEnd } },
+    }),
+  ]);
+
   const prevSubmitted = prevAssignments.filter((a) => a.status !== "Pending");
   const prevApproved = prevAssignments.filter((a) => a.status === "Approved");
   const prevRejected = prevAssignments.filter((a) => a.status === "Rejected");
@@ -297,7 +371,7 @@ async function autoClaimUnclaimedPreviousMonth(
   const prevAvgScorePct =
     prevApproved.length > 0
       ? prevApproved.reduce((sum, a) => sum + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) /
-        prevApproved.length
+      prevApproved.length
       : 0;
 
   const prevFirstResponderCount = prevSubmitted.filter((a) => {
@@ -315,39 +389,10 @@ async function autoClaimUnclaimedPreviousMonth(
     return isUnsubmittedPending && isOlderThan3Days;
   });
 
-  const prevReviewedCount = await prisma.score.count({
-    where: { reviewer: nickname, createdAt: { gte: prevMonthStart, lte: prevMonthEnd } },
-  });
-
-  const prevConsistencyStreak = await getConsistencyProStreak(
-    prisma as any,
-    nickname,
-    prevMonthEnd,
-    8,
-    prevMonthStart,
+  const prevActiveOrSubmittedForNoBacklog = prevAssignments.filter(
+    (a) => a.submitAt || a.status === "Approved",
   );
 
-  // FIX: "comeback-kid" evaluates prevMonth-vs-thisMonth late counts, so by
-  // definition it can only ever be judged accurately from the *current*
-  // month's data (i.e. from the GET request's normal per-request
-  // computation, not from an auto-claim of the previous month in isolation).
-  // Leaving it out of finalStates here is intentional — it is NOT a bug to
-  // omit it from THIS auto-claim pass. However, the real bug was that there
-  // was previously no other safety net for it at all: if a user qualified
-  // (>=3 late last month, 0 late this month) but forgot to click Claim
-  // before the month rolled over, the condition could no longer be true
-  // (this month's data becomes "last month's" and a new comparison starts)
-  // and the reward was lost permanently with no way to recover it.
-  //
-  // We fix that by capturing "comeback-kid" eligibility using the just-
-  // completed prevMonth vs. the month before it, and auto-claiming it here
-  // using the month-N-1-vs-month-N-2 comparison, mirroring how
-  // zero-reject/etc. settle a month in arrears.
-  const prevPrevMonthStart = clampStart(new Date(prevMonthStart.getFullYear(), prevMonthStart.getMonth() - 1, 1));
-  const prevPrevMonthEnd = new Date(prevMonthStart.getFullYear(), prevMonthStart.getMonth(), 0, 23, 59, 59);
-  const prevPrevAssignments = await prisma.assignment.findMany({
-    where: { userId, deadline: { gte: prevPrevMonthStart, lte: prevPrevMonthEnd } },
-  });
   const prevPrevSubmitted = prevPrevAssignments.filter((a) => a.status !== "Pending");
   const prevPrevLateCount = prevPrevSubmitted.filter((a) => a.submitAt > a.deadline).length;
   const comebackKidCompleted = prevPrevLateCount >= 3 && prevLateCount === 0;
@@ -360,9 +405,8 @@ async function autoClaimUnclaimedPreviousMonth(
     { id: "zero-reject", isCompleted: prevAssignments.length > 0 && prevRejected.length === 0, rewardPoints: 500, name: "Zero Reject" },
     { id: "workaholic", isCompleted: prevApproved.length >= 15, rewardPoints: 2000, name: "Workaholic" },
     { id: "report-pro", isCompleted: prevReviewedCount > 20, rewardPoints: 300, name: "20+ Reviews" },
-    { id: "no-backlog", isCompleted: prevApproved.length >= 2 && !prevHasBacklog, rewardPoints: 1000, name: "No Backlog" },
+    { id: "no-backlog", isCompleted: prevActiveOrSubmittedForNoBacklog.length >= 2 && !prevHasBacklog, rewardPoints: 1000, name: "No Backlog" },
     { id: "consistency-pro", isCompleted: prevConsistencyStreak >= 8, rewardPoints: 1000, name: "8-Week Streak" },
-    // FIX: previously missing from the auto-claim safety net entirely.
     { id: "comeback-kid", isCompleted: comebackKidCompleted, rewardPoints: 500, name: "Comeback Kid" },
   ];
 
@@ -417,6 +461,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Access denied." }, { status: 403 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const viewUserId = searchParams.get("userId");
+
+    let targetUserId = authUser.id;
+    let targetNickname = authUser.nickname;
+    let targetUsername = authUser.username;
+
+    if (viewUserId && viewUserId !== authUser.id) {
+      if (!isSuperAdmin) {
+        return NextResponse.json({ error: "Access denied." }, { status: 403 });
+      }
+      const targetUser = await prisma.user.findUnique({
+        where: { id: viewUserId },
+        select: { id: true, nickname: true, username: true, role: true },
+      });
+      if (!targetUser || targetUser.role !== "STAFF") {
+        return NextResponse.json({ error: "User not found." }, { status: 404 });
+      }
+      targetUserId = targetUser.id;
+      targetNickname = targetUser.nickname;
+      targetUsername = targetUser.username;
+    }
+
     const now = new Date();
     const monthStart = clampStart(new Date(now.getFullYear(), now.getMonth(), 1));
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
@@ -425,8 +492,9 @@ export async function GET(request: NextRequest) {
     const daysLeft = Math.ceil((monthEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
     await autoClaimUnclaimedPreviousMonth(
-      authUser.id,
-      authUser.nickname,
+      targetUserId,
+      targetNickname,
+      targetUsername,
       prevMonthStart,
       prevMonthEnd,
       prevMonthStart.getMonth() + 1,
@@ -436,10 +504,35 @@ export async function GET(request: NextRequest) {
     const currentMonthNum = now.getMonth() + 1;
     const currentYearNum = now.getFullYear();
 
-    const monthClaims = await prisma.missionClaim.findMany({
-      where: { userId: authUser.id, month: currentMonthNum, year: currentYearNum },
-      orderBy: { claimedAt: "asc" },
-    });
+    const [
+      monthClaims,
+      monthAssignments,
+      prevMonthAssignments,
+      levelUpState,
+      bonusCycleStart,
+      isZeroRejectClaimed,
+    ] = await Promise.all([
+      prisma.missionClaim.findMany({
+        where: { userId: targetUserId, month: currentMonthNum, year: currentYearNum },
+        orderBy: { claimedAt: "asc" },
+      }),
+      prisma.assignment.findMany({
+        where: { userId: targetUserId, deadline: { gte: monthStart, lte: monthEnd } },
+      }),
+      prisma.assignment.findMany({
+        where: { userId: targetUserId, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
+      }),
+      getLevelUpWindowState(targetUserId, now),
+      getBonusCycleStart(),
+      prisma.missionClaim.findFirst({
+        where: {
+          userId: targetUserId,
+          missionId: "zero-reject",
+          month: prevMonthStart.getMonth() + 1,
+          year: prevMonthStart.getFullYear(),
+        },
+      }),
+    ]);
 
     const claimedIds = new Set(monthClaims.map((c) => c.missionId));
 
@@ -455,29 +548,14 @@ export async function GET(request: NextRequest) {
       return monthStart;
     }
 
-    const monthAssignments = await prisma.assignment.findMany({
-      where: { userId: authUser.id, deadline: { gte: monthStart, lte: monthEnd } },
-    });
-
     const submitted = monthAssignments.filter((a) => a.status !== "Pending");
     const approved = monthAssignments.filter((a) => a.status === "Approved");
 
-    // ── Speed Runner ──
     const speedRunnerWindowStart = clampStart(new Date(now.getFullYear(), now.getMonth() - 1, 1));
     const speedRunnerCycleStart = cycleStartOf("speed-runner");
     const speedRunnerEffectiveStart =
       speedRunnerCycleStart > speedRunnerWindowStart ? speedRunnerCycleStart : speedRunnerWindowStart;
-    const speedRunnerAssignments = await prisma.assignment.findMany({
-      where: {
-        userId: authUser.id,
-        status: "Approved",
-        deadline: { gte: speedRunnerEffectiveStart, lte: monthEnd },
-      },
-    });
-    const speedRunnerCurrent = speedRunnerAssignments.filter((a) => a.submitAt <= a.deadline && a.updatedAt >= speedRunnerCycleStart).length;
-    const speedRunnerTarget = 10;
 
-    // ── Perfect Month ──
     const perfectMonthCycleStart = cycleStartOf("perfect-month");
     const approvedForPerfect = approved.filter((a) => a.deadline >= perfectMonthCycleStart && a.updatedAt >= perfectMonthCycleStart);
     const submittedForPerfect = submitted.filter((a) => a.deadline >= perfectMonthCycleStart);
@@ -485,11 +563,10 @@ export async function GET(request: NextRequest) {
     const avgScorePctForPerfect =
       approvedForPerfect.length > 0
         ? approvedForPerfect.reduce((sum, a) => sum + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) /
-          approvedForPerfect.length
+        approvedForPerfect.length
         : 0;
     const perfectMonth = lateCountForPerfect === 0 && approvedForPerfect.length >= 5 && avgScorePctForPerfect >= 80;
 
-    // ── First Responder ──
     const firstResponderCycleStart = cycleStartOf("first-responder");
     const firstResponderCount = submitted.filter((a) => {
       if (a.deadline < firstResponderCycleStart || a.submitAt < firstResponderCycleStart) return false;
@@ -498,57 +575,60 @@ export async function GET(request: NextRequest) {
     }).length;
     const firstResponderTarget = 3;
 
-    // ── Quality King ──
     const qualityKingCycleStart = cycleStartOf("quality-king");
     const qualityKingCurrent = approved.filter(
       (a) => a.deadline >= qualityKingCycleStart && a.updatedAt >= qualityKingCycleStart && a.reward > 0 && a.finalScore / a.reward >= 0.85,
     ).length;
     const qualityKingTarget = 8;
 
-    // ── Zero Reject (สรุปผลเดือนที่แล้ว จ่ายวันที่ 1) ──
-    const prevAssignmentsForZeroReject = await prisma.assignment.findMany({
-      where: { userId: authUser.id, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
-    });
-    const prevRejectedForZeroReject = prevAssignmentsForZeroReject.filter((a) => a.status === "Rejected");
-    const hasAssignmentsPrevMonth = prevAssignmentsForZeroReject.length > 0;
+    const prevRejectedForZeroReject = prevMonthAssignments.filter((a) => a.status === "Rejected");
+    const hasAssignmentsPrevMonth = prevMonthAssignments.length > 0;
     const zeroRejectCompleted = hasAssignmentsPrevMonth && prevRejectedForZeroReject.length === 0;
 
-    // FIX: this now matches the record key written by BOTH the auto-claim
-    // path above (month = prevMonthNum/prevYearNum) AND the manual redeem
-    // route (which now also keys zero-reject to the previous month/year).
-    const isZeroRejectClaimed = await prisma.missionClaim.findFirst({
-      where: {
-        userId: authUser.id,
-        missionId: "zero-reject",
-        month: prevMonthStart.getMonth() + 1,
-        year: prevMonthStart.getFullYear(),
-      },
-    });
-
-    // ── Workaholic ──
     const workaholicCycleStart = cycleStartOf("workaholic");
     const workaholicCurrent = approved.filter((a) => a.deadline >= workaholicCycleStart && a.updatedAt >= workaholicCycleStart).length;
     const workaholicTarget = 15;
 
-    // ── Consistency Pro ──
     const consistencyTarget = 8;
-    const consistencyProCycleStart = cycleStartOf("consistency-pro");
-    const consistencyProCurrent = await getConsistencyProStreak(
-      prisma as any,
-      authUser.nickname,
-      now,
-      consistencyTarget,
-      consistencyProCycleStart,
-    );
+    function streakCycleStartOf(missionId: string): Date {
+      const claimedAt = lastClaimedAtMap.get(missionId);
+      // เคย claim ในเดือนนี้แล้ว -> เริ่มรอบใหม่จริงตามที่ user กด Claim
+      // ยังไม่เคย claim -> ปล่อยให้ streak ย้อนข้ามเดือนได้ ไม่ตัดที่ monthStart
+      if (claimedAt && claimedAt > MISSION_TRACKING_START) return claimedAt;
+      return MISSION_TRACKING_START;
+    }
 
-    // ── Report Pro ──
+    const consistencyProCycleStart = streakCycleStartOf("consistency-pro");
     const reportProCycleStart = cycleStartOf("report-pro");
-    const reviewedCount = await prisma.score.count({
-      where: { reviewer: authUser.nickname, createdAt: { gte: reportProCycleStart, lte: monthEnd } },
-    });
+
+    const [speedRunnerAssignments, consistencyProCurrent, reviewedCount] = await Promise.all([
+      prisma.assignment.findMany({
+        where: {
+          userId: targetUserId,
+          status: "Approved",
+          deadline: { gte: speedRunnerEffectiveStart, lte: monthEnd },
+        },
+      }),
+      getConsistencyProStreak(
+        prisma as any,
+        targetUsername,
+        now,
+        consistencyTarget,
+        consistencyProCycleStart,
+      ),
+      prisma.dailyReport.count({
+        where: {
+          reviewedBy: targetUsername,
+          status: { in: ["Approved", "Rejected"] },
+          updatedAt: { gte: reportProCycleStart, lte: monthEnd },
+          user: { role: "INTERN" },
+        },
+      }),
+    ]);
+    const speedRunnerCurrent = speedRunnerAssignments.filter((a) => a.submitAt <= a.deadline && a.updatedAt >= speedRunnerCycleStart).length;
+    const speedRunnerTarget = 10;
     const reportProTarget = 20;
 
-    // ── No Backlog (claimable once per calendar month; not resettable) ──
     const noBacklogCycleStart = monthStart;
     const assignmentsInNoBacklogCycle = monthAssignments.filter((a) => a.createdAt >= noBacklogCycleStart);
     const activeOrSubmittedForNoBacklog = assignmentsInNoBacklogCycle.filter((a) => a.submitAt || a.status === "Approved");
@@ -570,8 +650,6 @@ export async function GET(request: NextRequest) {
       noBacklogProgressLabel = "✅ 0 backlog · On track";
     }
 
-    // ── Level Up! ──
-    const levelUpState = await getLevelUpWindowState(authUser.id, now);
     const levels = levelUpState.levels;
     const curLv = levels[levelUpState.currentIdx];
     const nextLv = levels[levelUpState.currentIdx + 1];
@@ -581,18 +659,12 @@ export async function GET(request: NextRequest) {
     );
     const levelUpCompleted = levelUpState.completed;
 
-    // ── Comeback Kid ──
-    const prevMonthAssignments = await prisma.assignment.findMany({
-      where: { userId: authUser.id, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
-    });
     const prevSubmitted = prevMonthAssignments.filter((a) => a.status !== "Pending");
     const prevLateCount = prevSubmitted.filter((a) => a.submitAt > a.deadline).length;
     const currentSubmitted = monthAssignments.filter((a) => a.status !== "Pending");
     const currentLateCount = currentSubmitted.filter((a) => a.submitAt > a.deadline).length;
     const comebackKid = prevLateCount >= 3 && currentLateCount === 0;
 
-    // Leaderboard
-    const bonusCycleStart = await getBonusCycleStart();
     const bonusLeaderboard = await getBonusLeaderboard(bonusCycleStart, now);
 
     function resolveIsClaimed(missionId: string, current: number): boolean {
@@ -683,7 +755,7 @@ export async function GET(request: NextRequest) {
       },
       "report-pro": {
         id: "report-pro", emoji: "📝", name: "20+ Reviews",
-        description: "ตรวจงานของทีมมากกว่า 20 ครั้ง (กด Claim เพื่อเริ่มรอบใหม่)",
+        description: "ตรวจงานของ INTERN มากกว่า 20 ครั้ง (กด Claim เพื่อเริ่มรอบใหม่)",
         category: "report", categoryLabel: "Routine", rewardPoints: 300,
         current: reviewedCount, target: reportProTarget,
         progressLabel: `${reviewedCount} / ${reportProTarget}+`,
@@ -699,10 +771,6 @@ export async function GET(request: NextRequest) {
         progressLabel: noBacklogProgressLabel,
         progressPct: noBacklogCompleted ? 100 : Math.min(99, Math.round((activeOrSubmittedForNoBacklog.length / 2) * 100)),
         progressColor: "blue", isCompleted: noBacklogCompleted,
-        // FIX: "no-backlog" is NOT in RESETTABLE_MISSION_IDS (matches redeem
-        // route), so its claimed state is a plain "claimed this month?"
-        // check, same as zero-reject/comeback-kid — not resolveIsClaimed(),
-        // which is only correct for resettable missions.
         isClaimed: claimedIds.has("no-backlog"),
       },
       "level-up": {

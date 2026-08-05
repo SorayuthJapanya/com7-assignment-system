@@ -1,6 +1,17 @@
 import { isAuthorize } from "@/lib/middleware";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { REDEEM_REVIEWERS, REDEEM_REVIEWER_LIST, getNegativePointsCycleStart } from "@/lib/score-constants";
+interface LeaderboardRow {
+  userId: string;
+  username: string;
+  nickname: string;
+  profileImage: string | null;
+  totalScore: bigint;
+  assignmentCount: bigint;
+  lateCount: bigint;
+  overdueSeconds: number;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,9 +48,8 @@ export async function GET(request: NextRequest) {
       ? `AND a."createdAt" >= '${startDate}' AND a."createdAt" <= '${endDate}'`
       : "";
 
-    const rawScores = await prisma.$queryRawUnsafe<
-      { userId: string; username: string; nickname: string; profileImage: string | null; totalScore: bigint; assignmentCount: bigint; lateCount: bigint; overdueSeconds: number }[]
-    >(`
+    // ===== Query หลัก: totalScore คำนวณแบบเดิมทุกประการ ไม่เปลี่ยน =====
+    const rawScores = await prisma.$queryRawUnsafe<LeaderboardRow[]>(`
       SELECT
         u.id as "userId",
         u.username,
@@ -98,16 +108,63 @@ export async function GET(request: NextRequest) {
       ORDER BY "totalScore" DESC
     `);
 
+    // ===== negativePoints: penalty ดิบ (ตั้งแต่ cycle start) ลบด้วยที่เคยแลกไปแล้ว =====
+    const negativeCycleStart = await getNegativePointsCycleStart();
+
+    const negativeCreatedAtFilter: { gte: Date; lte?: Date } = { gte: negativeCycleStart };
+    if (startDate && endDate) {
+      const selectedStart = new Date(startDate);
+      negativeCreatedAtFilter.gte =
+        selectedStart > negativeCycleStart ? selectedStart : negativeCycleStart;
+      negativeCreatedAtFilter.lte = new Date(endDate);
+    }
+
+    const penaltyRows = await prisma.score.groupBy({
+      by: ["recipient_id"],
+      where: {
+        score: { lt: 0 },
+        reviewer: { notIn: REDEEM_REVIEWER_LIST },
+        createdAt: negativeCreatedAtFilter,
+      },
+      _sum: { score: true },
+    });
+
+    const redeemedNegRows = await prisma.score.groupBy({
+      by: ["recipient_id"],
+      where: {
+        score: { lt: 0 },
+        reviewer: REDEEM_REVIEWERS.NEGATIVE_DEDUCTION,
+        assignment_title: "Redeem negative points",
+        createdAt: negativeCreatedAtFilter,
+      },
+      _sum: { score: true },
+    });
+
+    const penaltyMap = new Map<string, number>();
+    for (const row of penaltyRows) {
+      penaltyMap.set(row.recipient_id, Math.abs(row._sum.score ?? 0));
+    }
+
+    const redeemedNegMap = new Map<string, number>();
+    for (const row of redeemedNegRows) {
+      redeemedNegMap.set(row.recipient_id, Math.abs(row._sum.score ?? 0));
+    }
     const levels = await prisma.level.findMany({ orderBy: { minScore: "asc" } });
 
-    const leaderboard = rawScores.map((row, index) => {
-      const totalScore = Number(row.totalScore);
+    const leaderboard = rawScores.map((row: LeaderboardRow, index: number) => {
+      const rawTotalScore = Number(row.totalScore);
+      const totalScore = Math.max(0, rawTotalScore);
+
+      const rawPenalty = penaltyMap.get(row.userId) ?? 0;
+      const redeemedNeg = redeemedNegMap.get(row.userId) ?? 0;
+      const negativePoints = Math.max(0, rawPenalty - redeemedNeg);
+
       const assignmentCount = Number(row.assignmentCount);
       const lateCount = Number(row.lateCount);
       const overdueSeconds = Math.max(0, Number(row.overdueSeconds));
-      const level = levels.find(
-        (l) => totalScore >= l.minScore && totalScore <= l.maxScore
-      ) || null;
+
+      const level =
+        levels.find((l) => totalScore >= l.minScore && totalScore <= l.maxScore) || null;
 
       return {
         rank: index + 1,
@@ -116,7 +173,11 @@ export async function GET(request: NextRequest) {
         nickname: row.nickname,
         profileImage: row.profileImage,
         totalScore,
-        avgScore: assignmentCount > 0 ? Math.round(((assignmentCount - lateCount) / assignmentCount) * 100) : 0,
+        negativePoints,
+        avgScore:
+          assignmentCount > 0
+            ? Math.round(((assignmentCount - lateCount) / assignmentCount) * 100)
+            : 0,
         assignmentCount,
         lateCount,
         overdueSeconds,

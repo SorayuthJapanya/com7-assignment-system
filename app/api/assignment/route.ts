@@ -4,6 +4,7 @@ import { sendMail } from "@/lib/sendMail";
 import { prisma } from "@/lib/prisma";
 import { NewAssignmentTemplate } from "@/template/new-assignment-template";
 import { format } from "date-fns";
+import { getRacingBucketIndex } from "@/lib/bonus-cycle";
 
 export async function GET(request: NextRequest) {
   try {
@@ -162,8 +163,43 @@ export async function GET(request: NextRequest) {
       take: limit,
     });
 
+    // แนบ bucket + hasRecordBonus ให้แต่ละ assignment ที่ Approved และ
+    // เคยถูกส่งแล้ว (submitAt จริง) เพื่อให้ AssignmentCard แสดง badge
+    // "กำลังแข่ง Record Bonus" / "ได้ Record Bonus แล้ว" ได้โดยไม่ต้อง
+    // เดา logic ซ้ำฝั่ง frontend
+    const approvedSubmittedIds = assignments
+      .filter((a) => a.status === "Approved" && a.submitAt)
+      .map((a) => a.id);
+
+    let recordBonusIds = new Set<string>();
+    if (approvedSubmittedIds.length > 0) {
+      const markers = approvedSubmittedIds.map((id) => `Record Bonus [${id}]`);
+      const bonusRows = await prisma.score.findMany({
+        where: { assignment_title: { in: markers } },
+        select: { assignment_title: true },
+      });
+      recordBonusIds = new Set(
+        bonusRows.map((row) => {
+          const match = row.assignment_title.match(/^Record Bonus \[(.+)\]$/);
+          return match ? match[1] : "";
+        }),
+      );
+    }
+
+    const assignmentsWithBonus = assignments.map((a) => {
+      const bucket =
+        a.status === "Approved" && a.submitAt
+          ? getRacingBucketIndex(a.deadline, a.submitAt)
+          : null;
+      return {
+        ...a,
+        bucket,
+        hasRecordBonus: recordBonusIds.has(a.id),
+      };
+    });
+
     return NextResponse.json({
-      assignments,
+      assignments: assignmentsWithBonus,
       pagination: {
         page,
         limit,

@@ -1,7 +1,7 @@
 import OverdueDeduction from "./overdue-deduction";
 
 export const metadata = {
-  title: "Overdue Deduction",
+  title: "Overdue & Negetive Ponits",
   description: "Reduce overdue time using your points",
 };
 

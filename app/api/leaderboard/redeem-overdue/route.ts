@@ -1,38 +1,74 @@
 import { isAuthorize } from "@/lib/middleware";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  REDEEM_REVIEWERS,
+  REDEEM_REVIEWER_LIST,
+  getNegativePointsCycleStart,
+} from "@/lib/score-constants";
 
 async function computeRedeemData(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { resetAt: true }, // 🎯 เอา totalScore ออกจากตรงนี้เพราะไม่มีใน Model User
+    select: { resetAt: true },
   });
 
   const scoreFilter = user?.resetAt
     ? { recipient_id: userId, createdAt: { gt: user.resetAt } }
     : { recipient_id: userId };
 
-  // คำนวณผลรวมคะแนนสุทธิปัจจุบัน (รวมยอดบวกและยอดหักลบที่เคยบันทึกไว้ทั้งหมด)
+  // 1. totalScore: net ทั้งหมด เหมือนเดิมทุกประการ (ไม่เปลี่ยนพฤติกรรม)
   const totalScoreRaw = await prisma.score.aggregate({
     _sum: { score: true },
     where: scoreFilter,
   });
-  
-  const totalScore = totalScoreRaw._sum.score ?? 0;
 
+  const rawScore = totalScoreRaw._sum.score ?? 0;
+  const totalScore = Math.max(0, rawScore);
+
+  // 2. negativePoints: penalty ดิบ (ตั้งแต่ cycle start) ลบด้วยที่เคยแลกไปแล้ว
+  //    ไม่รวม transaction การแลก (Overdue/Negative Deduction) และไม่นับ penalty เก่าก่อน cycle
+  const negativeCycleStart = await getNegativePointsCycleStart();
+
+  const penaltyRaw = await prisma.score.aggregate({
+    _sum: { score: true },
+    where: {
+      recipient_id: userId,
+      score: { lt: 0 },
+      reviewer: { notIn: REDEEM_REVIEWER_LIST },
+      createdAt: { gte: negativeCycleStart },
+    },
+  });
+  const rawPenalty = Math.abs(penaltyRaw._sum.score ?? 0);
+
+  const redeemedNegRaw = await prisma.score.aggregate({
+    _sum: { score: true },
+    where: {
+      recipient_id: userId,
+      score: { lt: 0 },
+      reviewer: REDEEM_REVIEWERS.NEGATIVE_DEDUCTION,
+      assignment_title: "Redeem negative points",
+      createdAt: { gte: negativeCycleStart },
+    },
+  });
+  const redeemedNeg = Math.abs(redeemedNegRaw._sum.score ?? 0);
+
+  const negativePoints = Math.max(0, rawPenalty - redeemedNeg);
+
+  // 3. คะแนนที่เคยแลกลด Overdue ไปแล้ว
   const redeemedRaw = await prisma.score.aggregate({
     _sum: { score: true },
     where: {
       recipient_id: userId,
       score: { lt: 0 },
-      reviewer: "Overdue Deduction",
+      reviewer: REDEEM_REVIEWERS.OVERDUE_DEDUCTION,
       assignment_title: "Redeem overdue minutes",
       ...(user?.resetAt ? { createdAt: { gt: user.resetAt } } : {}),
     },
   });
 
   const redeemedPoints = Math.abs(redeemedRaw._sum.score ?? 0);
-  const redeemedMinutes = redeemedPoints * 5; 
+  const redeemedMinutes = redeemedPoints * 5;
 
   const resetAtParam = user?.resetAt ?? null;
 
@@ -47,8 +83,8 @@ async function computeRedeemData(userId: string) {
 
   const overdueSeconds = Number(rawOverdue[0]?.overdueSeconds ?? 0);
   const remainingOverdueSeconds = Math.max(0, overdueSeconds - redeemedMinutes * 60);
-  
   const remainingOverdueMinutes = Math.floor(remainingOverdueSeconds / 60);
+
   const maxMinutesFromScore = totalScore * 5;
   const maxRedeemableMinutes = Math.min(maxMinutesFromScore, remainingOverdueMinutes);
 
@@ -58,6 +94,7 @@ async function computeRedeemData(userId: string) {
     maxRedeemableMinutes,
     secondsPerMinute: 60,
     remainingOverdueSeconds,
+    negativePoints,
   };
 }
 
@@ -116,13 +153,12 @@ export async function POST(request: NextRequest) {
 
     const pointsToDeduct = minutesToRedeem / 5;
 
-    // 🎯 แก้ไขจุดบกพร่อง: สร้างแถวหักคะแนนติดลบลงตาราง Score ตรงๆ เพื่อให้อันดับ Leaderboard ปรับยอดสุทธิลงตามธรรมชาติ
     const deduction = await prisma.score.create({
       data: {
         recipient_id: authUser.id,
-        reviewer: "Overdue Deduction",
+        reviewer: REDEEM_REVIEWERS.OVERDUE_DEDUCTION,
         assignment_title: "Redeem overdue minutes",
-        score: -pointsToDeduct, 
+        score: -pointsToDeduct,
       },
     });
 
@@ -130,7 +166,7 @@ export async function POST(request: NextRequest) {
       success: true,
       minutesUsed: minutesToRedeem,
       secondsReduced: minutesToRedeem * 60,
-      remainingScore: data.totalScore - pointsToDeduct, // คำนวณค่าล่วงหน้าส่งกลับไปแสดงผลชั่วคราวบนหน้าบ้าน
+      remainingScore: data.totalScore - pointsToDeduct,
       remainingOverdueSeconds: Math.max(0, data.overdueSeconds - minutesToRedeem * 60),
       deductionId: deduction.id,
     });

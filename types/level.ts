@@ -37,6 +37,7 @@ export interface LeaderboardEntry {
   lateCount: number;
   overdueSeconds: number;
   level: ILevel | null;
+  negativePoints?: number;
 }
 
 export interface LeaderboardResponse {
@@ -44,17 +45,13 @@ export interface LeaderboardResponse {
   period?: { year: number; month: number } | null;
 }
 
-
-// ============================================================
-// เพิ่มเข้าไปใน types/level.ts ที่มีอยู่ (ต่อท้ายไฟล์)
-// ============================================================
-
 export interface RedeemStatus {
   totalScore: number;
   overdueSeconds: number;
   maxRedeemableMinutes: number;
   secondsPerMinute: number;
   remainingOverdueSeconds: number;
+  negativePoints?: number;
 }
 
 export interface RedeemOverdueRequest {
@@ -67,4 +64,15 @@ export interface RedeemOverdueResponse {
   secondsReduced: number;
   remainingScore: number;
   remainingOverdueSeconds: number;
+}
+
+export interface RedeemNegativeRequest {
+  pointsToDeduct: number;
+}
+
+export interface RedeemNegativeResponse {
+  success: boolean;
+  pointsDeducted: number;
+  remainingNegativePoints: number;
+  remainingTotalScore: number;
 }

@@ -3,7 +3,7 @@
 import { useAdminLeaderboard } from "@/hooks/use-leaderboard";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import LevelBadge from "../shared/level-badge";
-import { Trophy } from "lucide-react";
+import { Trophy, TrendingDown } from "lucide-react";
 
 const RANK_STYLES = [
   { bg: "bg-yellow-50 dark:bg-yellow-950/30", text: "text-yellow-600", medal: "🥇" },
@@ -35,6 +35,12 @@ export default function LeaderboardCard() {
           <ol className="space-y-2">
             {data.leaderboard.map((entry, idx) => {
               const style = RANK_STYLES[entry.rank - 1];
+              // 🆕 negativePoints: magnitude of the deficit when the raw
+              // total (approvals - penalties) is below 0. `totalScore`
+              // itself is already floored at 0 by the API, so this is the
+              // only place the deficit is visible.
+              const negativePoints = (entry as any).negativePoints ?? 0;
+
               return (
                 <li
                   key={entry.userId}
@@ -49,6 +55,13 @@ export default function LeaderboardCard() {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm truncate">{entry.nickname || entry.username}</p>
                     <p className="text-xs text-muted-foreground truncate">@{entry.username}</p>
+                    {/* 🆕 Negative Points — only rendered when in deficit */}
+                    {negativePoints > 0 && (
+                      <p className="flex items-center gap-1 text-[11px] font-medium text-red-600 mt-0.5">
+                        <TrendingDown className="size-3" />
+                        Negative Points: {negativePoints.toLocaleString()}
+                      </p>
+                    )}
                   </div>
 
                   {/* Level badge */}

@@ -58,6 +58,9 @@ interface MissionCardProps {
   legendary?: boolean;
   onClaim?: (missionId: string) => void;
   isClaiming?: boolean;
+  // 🆕 โหมดดูอย่างเดียว (Admin เปิดดู mission ของ staff คนอื่น)
+  // ปุ่ม Claim จะถูกปิดใช้งานเสมอและเปลี่ยนข้อความ ไม่ว่า onClaim จะถูกส่งมาหรือไม่
+  readOnly?: boolean;
 }
 
 export default function MissionCard({
@@ -66,9 +69,13 @@ export default function MissionCard({
   legendary,
   onClaim,
   isClaiming,
+  readOnly = false,
 }: MissionCardProps) {
   const isNotStarted = mission.current === 0 && !mission.isCompleted;
-  const canClaim = mission.isCompleted && !mission.isClaimed;
+  // 🔧 FIX: เดิม canClaim เช็คแค่ isCompleted + !isClaimed ทำให้ปุ่มยัง
+  // แสดงเป็น "Claim ได้" แม้ตอน readOnly เพราะปุ่มถูก render จาก
+  // mission.isCompleted อย่างเดียว ไม่เคยเช็ค onClaim เลย
+  const canClaim = mission.isCompleted && !mission.isClaimed && !readOnly;
   const t = THEME_MAP[theme];
   // การ์ดที่ยังไม่เริ่มเลย ให้เป็นสีเทาจาง ๆ เหมือนเดิม ไม่ใช้สีธีม (กันดูรกตา)
   const useThemeBg = !isNotStarted && theme !== "default";
@@ -188,16 +195,20 @@ export default function MissionCard({
               ? useThemeBg
                 ? "bg-white/20 text-white cursor-default"
                 : "bg-emerald-50 text-emerald-500 cursor-default"
-              : useThemeBg
-                ? "bg-white text-slate-900 hover:bg-white/90 disabled:opacity-60"
-                : "bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60"
+              : readOnly
+                ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                : useThemeBg
+                  ? "bg-white text-slate-900 hover:bg-white/90 disabled:opacity-60"
+                  : "bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60"
           )}
         >
           {mission.isClaimed
             ? "รับรางวัลแล้ว "
-            : isClaiming
-              ? "กำลังรับรางวัล..."
-              : `🎁 Claim +${mission.rewardPoints.toLocaleString()} Points`}
+            : readOnly
+              ? "🔒 รอ Staff กด Claim เอง"
+              : isClaiming
+                ? "กำลังรับรางวัล..."
+                : `🎁 Claim +${mission.rewardPoints.toLocaleString()} Points`}
         </button>
       )}
     </div>

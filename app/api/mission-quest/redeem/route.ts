@@ -5,6 +5,7 @@ import { createHash } from "crypto";
 import {
   RESETTABLE_MISSION_IDS,
   VALID_MISSION_IDS,
+  MISSION_TRACKING_START,
   clampStart,
   getConsistencyProStreak,
   THREE_DAYS_MS as THREE_DAYS_MS_LOCAL,
@@ -42,13 +43,30 @@ async function checkMissionCompleted(
   let recordYear = currentYear;
 
   let cycleStart = monthStart;
-  if (RESETTABLE_MISSION_IDS.has(missionId)) {
+  if (RESETTABLE_MISSION_IDS.has(missionId) && missionId !== "consistency-pro") {
     const lastClaim = await tx.missionClaim.findFirst({
       where: { userId, missionId, month: currentMonth, year: currentYear },
       orderBy: { claimedAt: "desc" },
     });
     if (lastClaim && lastClaim.claimedAt > monthStart && lastClaim.claimedAt <= monthEnd) {
       cycleStart = lastClaim.claimedAt;
+    }
+  }
+
+  // consistency-pro is a cross-month streak, not a monthly quota — its lower
+  // bound must NOT default to monthStart, or every un-claimed streak gets
+  // silently truncated at the 1st of the calendar month. We look up the
+  // most recent claim EVER (not scoped to current month/year) so a streak
+  // that started last month is still respected. Mirrors streakCycleStartOf()
+  // in mission-quest/route.ts (GET) — keep both in sync if this changes.
+  let consistencyCycleStart = MISSION_TRACKING_START;
+  if (missionId === "consistency-pro") {
+    const lastConsistencyClaim = await tx.missionClaim.findFirst({
+      where: { userId, missionId: "consistency-pro" },
+      orderBy: { claimedAt: "desc" },
+    });
+    if (lastConsistencyClaim && lastConsistencyClaim.claimedAt > MISSION_TRACKING_START) {
+      consistencyCycleStart = lastConsistencyClaim.claimedAt;
     }
   }
 
@@ -138,7 +156,10 @@ async function checkMissionCompleted(
     }
 
     case "consistency-pro": {
-      const streak = await getConsistencyProStreak(tx as any, nickname, now, 8, cycleStart);
+      // FIX: use consistencyCycleStart (not the monthly cycleStart) so a
+      // streak that started before this calendar month isn't silently
+      // truncated at the 1st. See comment above where it's computed.
+      const streak = await getConsistencyProStreak(tx as any, nickname, now, 8, consistencyCycleStart);
       return { completed: streak >= 8, rewardPoints: 1000, recordMonth, recordYear };
     }
 

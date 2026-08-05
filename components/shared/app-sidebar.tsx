@@ -277,7 +277,7 @@ export default function AppSidebar() {
                           >
                             <Link href="/overdue-deduction">
                               <Clock className="size-4" />
-                              <span className="text-sm">Overdue Deduction</span>
+                              <span className="text-sm">Overdue & Negative Points</span>
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>

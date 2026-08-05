@@ -40,9 +40,12 @@ interface MissionSectionProps {
   section: MissionSectionData;
   onClaim?: (missionId: string) => void;
   claimingId?: string | null;
+  // 🆕 เมื่อ true = โหมดดูอย่างเดียว (เช่น Admin เปิดดู mission ของ staff คนอื่น)
+  // ไม่ส่ง onClaim ต่อให้ MissionCard เลย เพื่อให้ปุ่ม Claim ไม่โชว์/กดไม่ได้
+  readOnly?: boolean;
 }
 
-export default function MissionSection({ section, onClaim, claimingId }: MissionSectionProps) {
+export default function MissionSection({ section, onClaim, claimingId, readOnly = false }: MissionSectionProps) {
   const Icon = ICON_MAP[section.icon] ?? Target;
   const isBonusSection = section.key === "bonus";
   const theme: MissionTheme = SECTION_THEME_MAP[section.key] ?? "default";
@@ -58,6 +61,11 @@ export default function MissionSection({ section, onClaim, claimingId }: Mission
         </div>
         <h2 className="text-base font-bold text-slate-900">{section.title}</h2>
         <span className="text-xs text-slate-400 font-medium">{section.countLabel}</span>
+        {readOnly && (
+          <span className="ml-auto text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+            View only
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -69,6 +77,7 @@ export default function MissionSection({ section, onClaim, claimingId }: Mission
             legendary={isBonusSection}
             onClaim={onClaim}
             isClaiming={claimingId === mission.id}
+            readOnly={readOnly}
           />
         ))}
       </div>

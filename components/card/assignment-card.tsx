@@ -8,8 +8,8 @@ import {
 } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { Coins, CalendarDays, CalendarCheck, Clock, User, Users, AlertCircle } from "lucide-react";
-import { getEarlyBirdCondition } from "@/lib/early-bird-bonus-table";
+import { Coins, CalendarDays, CalendarCheck, Clock, User, Users, AlertCircle, Trophy } from "lucide-react";
+import { getEarlyBirdCondition, getBucketDisplay } from "@/lib/early-bird-bonus-table";
 
 interface AssignmentCardProps {
   assignment: IAssignment;
@@ -63,11 +63,33 @@ export default function AssignmentCard({
   const earlyBirdCondition =
     resultStatus === "Approved" ? getEarlyBirdCondition(assignment.earlyBirdModifier) : null;
 
-  // 🆕 คะแนนที่แสดงบน badge: ใช้ adjustedScore เมื่อ Approved, ไม่งั้นใช้ finalScore เดิม
-  const displayScore =
-    resultStatus === "Approved" && assignment.adjustedScore != null
-      ? assignment.adjustedScore
-      : assignment.finalScore;
+  // 🆕 Bucket display (racing status / record bonus) — คนละ concept กับ
+  // earlyBirdCondition ด้านบน (นั่นคือ penalty ที่หักจริง ส่วนนี้คือสถานะ
+  // การแข่ง Record Bonus +500 ซึ่งไม่ผูกกับ penalty เลย)
+  const bucketInfo =
+    resultStatus === "Approved" ? getBucketDisplay(assignment.bucket) : null;
+
+  // 🆕 คะแนนผลลัพธ์ที่แสดงบน badge:
+  //   Approved → finalScore + latePenalty (+ Record Bonus ถ้ามี)
+  //   อื่น ๆ   → finalScore เดิม หรือ reward
+  const displayScore = (() => {
+    if (resultStatus !== "Approved") {
+      return assignment.finalScore || assignment.reward;
+    }
+
+    // ฐาน = adjustedScore (มี late penalty แล้ว) หรือ finalScore ถ้ายังไม่มี
+    let total =
+      assignment.adjustedScore != null
+        ? assignment.adjustedScore
+        : (assignment.finalScore ?? 0);
+
+    // รวม Record Bonus +500 เข้าไปในผลลัพธ์
+    if (assignment.hasRecordBonus) {
+      total += 500;
+    }
+
+    return total;
+  })();
 
   const getRemainingDays = () => {
     const now = Date.now();
@@ -169,7 +191,11 @@ export default function AssignmentCard({
             )}
             <div className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap">
               <Coins className="w-3 h-3" />
-              {displayScore ? `Score: ${displayScore}` : `${assignment.reward}`}
+              {resultStatus === "Approved"
+                ? `Score: ${displayScore}`
+                : displayScore
+                  ? `Score: ${displayScore}`
+                  : `${assignment.reward}`}
             </div>
           </div>
         </div>
@@ -200,6 +226,32 @@ export default function AssignmentCard({
             <span>{earlyBirdCondition.emoji}</span>
             <span>
               {earlyBirdCondition.modifierLabel} → {assignment.adjustedScore} Points
+            </span>
+          </div>
+        )}
+
+        {/* 🆕 Bucket / Record Bonus badge — แยกจาก earlyBirdCondition ด้านบน
+            แสดงเฉพาะ 4 bucket ที่แข่งได้ (super_early/early/before/ontime)
+            ถ้า hasRecordBonus = true จะโชว์ว่าได้ +500 ไปแล้ว
+            ถ้ายัง = โชว์ว่ากำลังอยู่ในสถานะที่มีสิทธิ์แข่ง */}
+        {bucketInfo && bucketInfo.isRacing && (
+          <div
+            className={`mt-1.5 inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg w-fit ${
+              assignment.hasRecordBonus
+                ? "bg-amber-50 text-amber-700"
+                : "bg-blue-50 text-blue-700"
+            }`}
+          >
+            {assignment.hasRecordBonus ? (
+              <Trophy className="w-3 h-3" />
+            ) : (
+              <span>{bucketInfo.emoji}</span>
+            )}
+            <span>
+              {bucketInfo.situation}
+              {assignment.hasRecordBonus
+                ? " · 🏆 ได้ Record Bonus +500!"
+                : " · กำลังแข่งชิง +500"}
             </span>
           </div>
         )}

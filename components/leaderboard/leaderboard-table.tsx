@@ -3,10 +3,16 @@
 import LevelBadge from "@/components/shared/level-badge";
 import { LeaderboardEntry, ILevel } from "@/types/level";
 import { cn } from "@/lib/utils";
-import { Clock, Flame, Star, Trophy } from "lucide-react";
+import { Clock, Flame, Star, Trophy, TrendingDown } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useGetLevels } from "@/hooks/use-level";
 import { useEffect, useState } from "react";
+
+// 🆕 NOTE: LeaderboardEntry (types/level.ts) needs a `negativePoints: number`
+// field added — comes from the admin leaderboard route, which now returns
+// `totalScore` floored at 0 and a separate `negativePoints` (magnitude of
+// the deficit, 0 if not in the hole). Add to the type like:
+//   negativePoints: number;
 
 interface LeaderboardTableProps {
   entries: LeaderboardEntry[];
@@ -57,7 +63,7 @@ function LevelProgressBar({ score, levels }: { score: number; levels: ILevel[] }
       </div>
       <div className="flex items-center justify-between text-[11px] text-gray-400">
         <span className="tabular-nums font-medium">{progress}%</span>
-        {nextName && <span className="truncate max-w-28">ถัดไป · {nextName}</span>}
+        {nextName && <span className="truncate max-w-28">Next · {nextName}</span>}
       </div>
     </div>
   );
@@ -132,6 +138,10 @@ function LeaderboardRow({
   const isTop3 = entry.rank >= 1 && entry.rank <= 3;
   const tier = isTop3 ? TIER[entry.rank as TierKey] : null;
   const delay = 30 + idx * 25;
+  // 🆕 negativePoints comes from the API already computed — 0 means not in
+  // the hole. Guard with `?? 0` in case an older cached response doesn't
+  // have the field yet.
+  const negativePoints = (entry as any).negativePoints ?? 0;
 
   return (
     <div
@@ -184,7 +194,7 @@ function LeaderboardRow({
             </p>
             {isMe && (
               <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-white bg-blue-600 px-1.5 py-0.5 rounded">
-                คุณ
+                You
               </span>
             )}
           </div>
@@ -209,27 +219,37 @@ function LeaderboardRow({
         {/* Desktop stats */}
         <div className="hidden md:flex flex-col items-end gap-1 shrink-0 pr-2">
           <div className="flex items-center gap-3">
-            <StatChip icon={<Trophy className="size-3" />} value={entry.assignmentCount} label="งาน" tone="positive" />
-            <StatChip icon={<Flame className="size-3" />} value={`${entry.avgScore}%`} label="เฉลี่ย" tone="neutral" />
+            <StatChip icon={<Trophy className="size-3" />} value={entry.assignmentCount} label="Task" tone="positive" />
+            <StatChip icon={<Flame className="size-3" />} value={`${entry.avgScore}%`} label="Average" tone="neutral" />
           </div>
-          {(entry.lateCount > 0 || entry.overdueSeconds > 0) && (
-            <div className="flex items-center gap-3">
-              {entry.lateCount > 0 && (
-                <StatChip icon={<Clock className="size-3" />} value={entry.lateCount} label="ล่าช้า" tone="attention" />
-              )}
-              {entry.overdueSeconds > 0 && (
-                <StatChip
-                  icon={<Clock className="size-3" />}
-                  value={formatOverdue(entry.overdueSeconds)}
-                  label="เกินกำหนด"
-                  tone="attention"
-                />
-              )}
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {entry.lateCount > 0 && (
+              <StatChip icon={<Clock className="size-3" />} value={entry.lateCount} label="Late" tone="attention" />
+            )}
+            {entry.overdueSeconds > 0 && (
+              <StatChip
+                icon={<Clock className="size-3" />}
+                value={formatOverdue(entry.overdueSeconds)}
+                label="Overdue"
+                tone="attention"
+              />
+            )}
+            {/* 🆕 Negative Points — separate line, only shown when the raw
+                total actually went below 0. The Score number itself (far
+                right) always stays floored at 0; this is the deficit
+                surfaced on its own, per spec. */}
+            {negativePoints > 0 && (
+              <StatChip
+                icon={<TrendingDown className="size-3" />}
+                value={negativePoints}
+                label="Negative Points"
+                tone="attention"
+              />
+            )}
+          </div>
         </div>
 
-        {/* Score */}
+        {/* Score — always floored at 0 for display */}
         <div className="flex items-center gap-1.5 shrink-0 min-w-[84px] justify-end">
           <Star className="size-3.5 fill-amber-400 text-amber-400 shrink-0" />
           <span className="font-bold tabular-nums text-base sm:text-lg text-gray-900">
@@ -237,6 +257,17 @@ function LeaderboardRow({
           </span>
         </div>
       </div>
+
+      {/* Mobile Negative Points row — the desktop stat cluster above is
+          hidden below md, so surface it here instead on small screens */}
+      {negativePoints > 0 && (
+        <div className="md:hidden -mt-2 pb-2.5 pl-[4.75rem] pr-4">
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-600">
+            <TrendingDown className="size-3" />
+            Negative Points: {negativePoints}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

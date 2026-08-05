@@ -4,9 +4,10 @@ import {
   RedeemStatus,
   RedeemOverdueRequest,
   RedeemOverdueResponse,
+  RedeemNegativeRequest,
+  RedeemNegativeResponse,
 } from "@/types/level";
 
-/* กำหนด type สำหรับ params เพื่อรองรับ excludeRole */
 interface LeaderboardParams {
   limit?: number;
   year?: number;
@@ -37,5 +38,12 @@ export const redeemOverdue = async (
   payload: RedeemOverdueRequest
 ): Promise<RedeemOverdueResponse> => {
   const response = await axiosInstance.post("/api/leaderboard/redeem-overdue", payload);
+  return response.data;
+};
+
+export const redeemNegativePoints = async (
+  payload: RedeemNegativeRequest
+): Promise<RedeemNegativeResponse> => {
+  const response = await axiosInstance.post("/api/leaderboard/redeem-negative", payload);
   return response.data;
 };
