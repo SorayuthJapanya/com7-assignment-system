@@ -75,7 +75,10 @@ export async function GET(request: NextRequest) {
     if (status !== "all") {
       if (status === "not-submit") {
         const notSubmitOr = [
-          { submissionUrl: "" },
+          {
+            submissionUrl: "",
+            status: { not: "Approved" },   // ✅ กัน Approved แล้วไม่ให้โผล่ใน not-submit
+          },
           {
             feedback: { not: "" },
             status: { not: "Approved" },
