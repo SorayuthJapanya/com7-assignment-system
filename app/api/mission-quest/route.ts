@@ -72,10 +72,8 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
       earlyMs: number;
     };
 
-    const bucketUserBest = Array.from(
-      { length: BONUS_BUCKETS.length },
-      () => new Map<string, Entry>(),
-    );
+    // เก็บ "แชมป์" ของแต่ละ bucket แบบ global (1 คนต่อ bucket เท่านั้น)
+    const bucketChampion: (Entry | null)[] = new Array(BONUS_BUCKETS.length).fill(null);
 
     for (const a of approvedAssignments) {
       const idx = getFullBucketIndex(a.deadline, a.submitAt!);
@@ -95,25 +93,26 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
         earlyMs,
       };
 
-      const map = bucketUserBest[idx];
-      const prev = map.get(a.userId);
+      const current = bucketChampion[idx];
 
-      if (!prev) {
-        map.set(a.userId, entry);
+      if (!current) {
+        bucketChampion[idx] = entry;
         continue;
       }
 
+      // bucket 0-3 (ส่งเร็ว/early bird): earlyMs ยิ่งมาก ยิ่งดี -> เอาคนที่ส่งเร็วที่สุด
+      // bucket 4-6 (overdue): earlyMs ยิ่งติดลบมาก ยิ่งสาย -> เอาคนที่สายที่สุด
       const isBetter =
-        idx < 4 ? entry.earlyMs > prev.earlyMs : entry.earlyMs < prev.earlyMs;
+        idx < 4 ? entry.earlyMs > current.earlyMs : entry.earlyMs < current.earlyMs;
 
       if (isBetter) {
-        map.set(a.userId, entry);
+        bucketChampion[idx] = entry;
       }
     }
 
     const allUserIds = new Set<string>();
-    bucketUserBest.forEach((map) => {
-      map.forEach((_, userId) => allUserIds.add(userId));
+    bucketChampion.forEach((entry) => {
+      if (entry) allUserIds.add(entry.userId);
     });
 
     if (allUserIds.size === 0) {
@@ -169,36 +168,36 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
       }
     >();
 
-    for (let idx = 0; idx < bucketUserBest.length; idx++) {
-      const map = bucketUserBest[idx];
-      map.forEach((entry) => {
-        if (!userMap.has(entry.userId)) {
-          const realCycleTotal = cycleScoreTotals.get(entry.userId) ?? 0;
-          userMap.set(entry.userId, {
-            userId: entry.userId,
-            name: entry.name,
-            username: entry.username,
-            buckets: new Array(BONUS_BUCKETS.length).fill(0),
-            bucketEntries: Array.from({ length: BONUS_BUCKETS.length }, () => []),
-            missionsDone: claimsCountByUser.get(entry.userId) ?? 0,
-            bonusEarned: realCycleTotal,
-            totalPoints: realCycleTotal,
-          });
-        }
+    for (let idx = 0; idx < bucketChampion.length; idx++) {
+      const entry = bucketChampion[idx];
+      if (!entry) continue; // bucket นี้ยังไม่มีใครทำสำเร็จเลย
 
-        const userData = userMap.get(entry.userId)!;
-        userData.buckets[idx] = 1;
-        userData.bucketEntries[idx] = [
-          {
-            id: entry.id,
-            assignmentId: entry.assignmentId,
-            title: entry.title,
-            deadline: entry.deadline,
-            submitAt: entry.submitAt,
-            reward: entry.reward,
-          },
-        ];
-      });
+      if (!userMap.has(entry.userId)) {
+        const realCycleTotal = cycleScoreTotals.get(entry.userId) ?? 0;
+        userMap.set(entry.userId, {
+          userId: entry.userId,
+          name: entry.name,
+          username: entry.username,
+          buckets: new Array(BONUS_BUCKETS.length).fill(0),
+          bucketEntries: Array.from({ length: BONUS_BUCKETS.length }, () => []),
+          missionsDone: claimsCountByUser.get(entry.userId) ?? 0,
+          bonusEarned: realCycleTotal,
+          totalPoints: realCycleTotal,
+        });
+      }
+
+      const userData = userMap.get(entry.userId)!;
+      userData.buckets[idx] = 1;
+      userData.bucketEntries[idx] = [
+        {
+          id: entry.id,
+          assignmentId: entry.assignmentId,
+          title: entry.title,
+          deadline: entry.deadline,
+          submitAt: entry.submitAt,
+          reward: entry.reward,
+        },
+      ];
     }
 
     const currentLeaderboard = Array.from(userMap.values())
@@ -363,7 +362,7 @@ async function autoClaimUnclaimedPreviousMonth(
   const prevAvgScorePct =
     prevApproved.length > 0
       ? prevApproved.reduce((sum, a) => sum + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) /
-        prevApproved.length
+      prevApproved.length
       : 0;
 
   const prevFirstResponderCount = prevSubmitted.filter((a) => {
@@ -556,7 +555,7 @@ export async function GET(request: NextRequest) {
     const avgScorePctForPerfect =
       approvedForPerfect.length > 0
         ? approvedForPerfect.reduce((sum, a) => sum + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) /
-          approvedForPerfect.length
+        approvedForPerfect.length
         : 0;
     const perfectMonth = lateCountForPerfect === 0 && approvedForPerfect.length >= 5 && avgScorePctForPerfect >= 80;
 
