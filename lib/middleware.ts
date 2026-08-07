@@ -1,7 +1,15 @@
 import { NextRequest } from "next/server";
-import jwt from "jsonwebtoken";
+import jwt, { JwtPayload } from "jsonwebtoken";
 import { prisma } from "./prisma";
 import { JWTPayload } from "@/types/auth";
+
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET is not configured");
+}
+
+// เก็บไว้ใน const ตัวใหม่ที่ TS มั่นใจว่าเป็น string แน่นอน (non-null)
+const SECRET: string = JWT_SECRET;
 
 export async function isAuthorize(request: NextRequest) {
   const token = request.cookies.get("authorize")?.value;
@@ -11,10 +19,7 @@ export async function isAuthorize(request: NextRequest) {
   }
 
   try {
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || "fallback-secret",
-    ) as JWTPayload;
+    const decoded = jwt.verify(token, SECRET) as unknown as JWTPayload;
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
@@ -34,7 +39,8 @@ export async function isAuthorize(request: NextRequest) {
     }
 
     return { user, error: null };
-  } catch {
+  } catch (err) {
+    console.error("JWT verify failed:", err);
     return { error: "Unauthorize", status: 401 };
   }
 }
