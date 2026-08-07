@@ -39,14 +39,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate token
-    const token = generateToken({
-      ...user,
-      profileImage: user.profileImage ?? undefined,
-      hiddenAt: user.hiddenAt ? user.hiddenAt.toISOString() : null, // 👈 เพิ่มการแปลงค่าตรงนี้
-      createdAt: user.createdAt.toISOString(),
-      updatedAt: user.updatedAt.toISOString(),
-      resetAt: user.resetAt ? user.resetAt.toISOString() : null,
-    });
+    const token = generateToken({ ...user, profileImage: user.profileImage ?? undefined });
+
+
+
+
+
+
+
 
     // Create response
     const response = NextResponse.json(
@@ -75,8 +75,11 @@ export async function POST(request: NextRequest) {
       path: '/'
     });
 
+    // Return response
     return response;
+
   } catch (error) {
+    console.error('Login error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
