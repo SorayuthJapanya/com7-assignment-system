@@ -5,7 +5,6 @@
 
 import type { MissionQuestResponse } from "@/types/mission-quest";
 
-
 export const MOCK_MISSION_QUEST: MissionQuestResponse = {
   kpis: {
     missionsDone: 3,
