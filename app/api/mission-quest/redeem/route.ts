@@ -70,12 +70,24 @@ async function checkMissionCompleted(
     }
   }
 
-  const monthAssignments = await tx.assignment.findMany({
-    where: { userId, deadline: { gte: monthStart, lte: monthEnd } },
-  });
-  const submitted = monthAssignments.filter((a) => a.status !== "Pending");
-  const approved = monthAssignments.filter((a) => a.status === "Approved");
-  const lateCount = submitted.filter((a) => a.submitAt > a.deadline).length;
+  // 🎯 FIX: เปลี่ยนจาก eager query (query monthAssignments ทุกครั้งไม่ว่า mission
+  // ที่กำลัง claim จะใช้หรือไม่) เป็น lazy fetch + memoize — query แค่ตอนที่
+  // case นั้นต้องใช้จริงเท่านั้น และ query ซ้ำแค่ครั้งเดียวถ้าถูกเรียกหลายจุด
+  // ภายใน case เดียวกัน (เช่น perfect-month ใช้ทั้ง approved และ submitted)
+  // Logic การคำนวณเงื่อนไขแต่ละ mission เหมือนเดิมทุกประการ
+  let _monthAssignments: Awaited<ReturnType<typeof tx.assignment.findMany>> | null = null;
+  const getMonthAssignments = async () => {
+    if (_monthAssignments === null) {
+      _monthAssignments = await tx.assignment.findMany({
+        where: { userId, deadline: { gte: monthStart, lte: monthEnd } },
+      });
+    }
+    return _monthAssignments;
+  };
+  const getSubmitted = async () => (await getMonthAssignments()).filter((a) => a.status !== "Pending");
+  const getApproved = async () => (await getMonthAssignments()).filter((a) => a.status === "Approved");
+  const getLateCount = async () =>
+    (await getSubmitted()).filter((a) => a.submitAt > a.deadline).length;
 
   switch (missionId) {
     case "speed-runner": {
@@ -93,6 +105,8 @@ async function checkMissionCompleted(
     }
 
     case "perfect-month": {
+      const approved = await getApproved();
+      const submitted = await getSubmitted();
       // FIX: added updatedAt >= cycleStart, matching the GET route.
       const approvedInCycle = approved.filter((a) => a.deadline >= cycleStart && a.updatedAt >= cycleStart);
       const submittedInCycle = submitted.filter((a) => a.deadline >= cycleStart);
@@ -110,6 +124,7 @@ async function checkMissionCompleted(
     }
 
     case "first-responder": {
+      const submitted = await getSubmitted();
       // FIX: also require submitAt >= cycleStart (not just deadline), matching GET.
       // Otherwise a submission already counted in a prior cycle could be
       // recounted after a reset-claim as long as its deadline happened to
@@ -123,6 +138,7 @@ async function checkMissionCompleted(
     }
 
     case "quality-king": {
+      const approved = await getApproved();
       // FIX: added updatedAt >= cycleStart.
       const count = approved.filter(
         (a) => a.deadline >= cycleStart && a.updatedAt >= cycleStart && a.reward > 0 && a.finalScore / a.reward >= 0.85,
@@ -131,6 +147,7 @@ async function checkMissionCompleted(
     }
 
     case "zero-reject": {
+      // ไม่แตะ monthAssignments เลย — ไม่ query เกินความจำเป็น
       const prevAssignments = await tx.assignment.findMany({
         where: { userId, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
       });
@@ -150,12 +167,14 @@ async function checkMissionCompleted(
     }
 
     case "workaholic": {
+      const approved = await getApproved();
       // FIX: added updatedAt >= cycleStart.
       const count = approved.filter((a) => a.deadline >= cycleStart && a.updatedAt >= cycleStart).length;
       return { completed: count >= 15, rewardPoints: 2000, recordMonth, recordYear };
     }
 
     case "consistency-pro": {
+      // ไม่แตะ monthAssignments เลย
       // FIX: use consistencyCycleStart (not the monthly cycleStart) so a
       // streak that started before this calendar month isn't silently
       // truncated at the 1st. See comment above where it's computed.
@@ -164,6 +183,7 @@ async function checkMissionCompleted(
     }
 
     case "report-pro": {
+      // ไม่แตะ monthAssignments เลย
       const reviewedCount = await tx.score.count({
         where: { reviewer: nickname, createdAt: { gte: cycleStart, lte: monthEnd } },
       });
@@ -175,6 +195,7 @@ async function checkMissionCompleted(
     // >= 2 submitted/approved assignments and no pending assignment older
     // than 3 days.
     case "no-backlog": {
+      const monthAssignments = await getMonthAssignments();
       const activeOrSubmitted = monthAssignments.filter((a) => a.submitAt || a.status === "Approved");
       const hasBacklog = monthAssignments.some((a) => {
         const isUnsubmittedPending = !a.submitAt && a.status === "Pending";
@@ -191,6 +212,7 @@ async function checkMissionCompleted(
     }
 
     case "level-up": {
+      // ไม่แตะ monthAssignments เลย
       const levels = await tx.level.findMany({ orderBy: { minScore: "asc" } });
       const agg = await tx.score.aggregate({ where: { recipient_id: userId }, _sum: { score: true } });
       const totalScore = agg._sum.score ?? 0;
@@ -209,6 +231,7 @@ async function checkMissionCompleted(
     }
 
     case "comeback-kid": {
+      const lateCount = await getLateCount();
       const prevAssignments = await tx.assignment.findMany({
         where: { userId, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
       });

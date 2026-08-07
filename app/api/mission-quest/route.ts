@@ -127,11 +127,16 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
     };
 
     const [scoreGroups, claimsByUser] = await Promise.all([
+      // 🎯 FIX: ไม่นับคะแนนที่มาจาก Mission Quest claim เข้าไปใน Early Bird bonus
+      // คะแนนของ Mission ถูกสร้างด้วย reviewer: "System (Mission Quest)"
+      // (ดู autoClaimUnclaimedPreviousMonth ด้านล่าง และ redeem/route.ts)
+      // ต้องตัดออก ให้ bonusEarned/totalPoints นับเฉพาะคะแนนจาก Assignment review เท่านั้น
       prisma.score.groupBy({
         by: ["recipient_id"],
         where: {
           recipient_id: { in: winnerIdsForQuery },
           createdAt: { gte: cycleStart, lte: now },
+          reviewer: { not: "System (Mission Quest)" },
         },
         _sum: { score: true },
       }),
@@ -316,6 +321,10 @@ async function getLevelUpWindowState(userId: string, now: Date) {
   return { completed: leveledUp, currentIdx: safeCurrentIdx, windowStart: win.windowStart, levels };
 }
 
+// 🎯 FIX: เพิ่ม parameter prevAssignments รับข้อมูลที่ query ไว้แล้วจาก caller
+// แทนที่จะ query prisma.assignment.findMany ซ้ำอีกรอบ (เดือนเดียวกัน, user เดียวกัน
+// กับที่ main GET handler query อยู่แล้วด้านล่าง) — ลด 1 query ต่อ request
+// Logic การคำนวณเงื่อนไข mission ทุกตัวเหมือนเดิมทุกประการ
 async function autoClaimUnclaimedPreviousMonth(
   userId: string,
   nickname: string,
@@ -324,6 +333,7 @@ async function autoClaimUnclaimedPreviousMonth(
   prevMonthEnd: Date,
   prevMonthNum: number,
   prevYearNum: number,
+  prevAssignments: Awaited<ReturnType<typeof prisma.assignment.findMany>>,
 ) {
   if (prevMonthEnd < MISSION_TRACKING_START) return;
   if (prevMonthStart < AUTO_CLAIM_DEPLOY_START) return;
@@ -332,14 +342,10 @@ async function autoClaimUnclaimedPreviousMonth(
   const prevPrevMonthEnd = new Date(prevMonthStart.getFullYear(), prevMonthStart.getMonth(), 0, 23, 59, 59);
 
   const [
-    prevAssignments,
     prevReviewedCount,
     prevConsistencyStreak,
     prevPrevAssignments,
   ] = await Promise.all([
-    prisma.assignment.findMany({
-      where: { userId, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
-    }),
     prisma.dailyReport.count({
       where: {
         reviewedBy: username,
@@ -483,6 +489,13 @@ export async function GET(request: NextRequest) {
     const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
     const daysLeft = Math.ceil((monthEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
+    // 🎯 FIX: query prevMonthAssignments ครั้งเดียว แล้วใช้ร่วมกันทั้งใน
+    // autoClaimUnclaimedPreviousMonth และในการคำนวณ comebackKid ด้านล่าง
+    // (เดิม query 2 รอบสำหรับข้อมูลชุดเดียวกัน)
+    const prevMonthAssignments = await prisma.assignment.findMany({
+      where: { userId: targetUserId, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
+    });
+
     await autoClaimUnclaimedPreviousMonth(
       targetUserId,
       targetNickname,
@@ -491,6 +504,7 @@ export async function GET(request: NextRequest) {
       prevMonthEnd,
       prevMonthStart.getMonth() + 1,
       prevMonthStart.getFullYear(),
+      prevMonthAssignments,
     );
 
     const currentMonthNum = now.getMonth() + 1;
@@ -499,7 +513,6 @@ export async function GET(request: NextRequest) {
     const [
       monthClaims,
       monthAssignments,
-      prevMonthAssignments,
       levelUpState,
       bonusCycleStart,
       isZeroRejectClaimed,
@@ -510,9 +523,6 @@ export async function GET(request: NextRequest) {
       }),
       prisma.assignment.findMany({
         where: { userId: targetUserId, deadline: { gte: monthStart, lte: monthEnd } },
-      }),
-      prisma.assignment.findMany({
-        where: { userId: targetUserId, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
       }),
       getLevelUpWindowState(targetUserId, now),
       getBonusCycleStart(),

@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(request: NextRequest) {
   try {
     const authResult = await isAuthorize(request);
-    
+
     if (authResult.error || !authResult.user) {
       return NextResponse.json({ error: authResult.error || "Unauthorized" }, { status: 401 });
     }
@@ -36,10 +36,14 @@ export async function GET(request: NextRequest) {
     };
     if (userId) overdueWhere.recipient_id = userId;
 
+    // 🎯 FIX: รวม claimsToday (count) + pointsToday (sum) เข้าเป็น aggregate
+    // เดียวกัน เพราะทั้งคู่ query ตาราง missionClaim ด้วย where เดียวกัน
+    // (claimedAt >= todayStart) — เดิมเป็น 2 queries แยกกัน ลดเหลือ 1 query
+    // ผลลัพธ์ที่ได้ (จำนวน claim วันนี้ + คะแนนรวมวันนี้) เหมือนเดิมทุกประการ
+    //
     // รัน Query ทั้งหมดขนานกันใน Promise.all
     const [
-      claimsToday,
-      pointsToday,
+      todayAgg,
       claimsThisMonth,
       activeStaffCount,
       topMissionGroup,
@@ -50,10 +54,9 @@ export async function GET(request: NextRequest) {
       overdueRows,
       missionSummary,
     ] = await Promise.all([
-      prisma.missionClaim.count({ where: { claimedAt: { gte: todayStart } } }),
-      
       prisma.missionClaim.aggregate({
         where: { claimedAt: { gte: todayStart } },
+        _count: true,
         _sum: { points: true },
       }),
 
@@ -128,10 +131,13 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
+    const claimsToday = todayAgg._count;
+    const pointsToday = todayAgg._sum.points ?? 0;
+
     return NextResponse.json({
       kpi: {
         claimsToday,
-        pointsToday: pointsToday._sum.points ?? 0,
+        pointsToday,
         claimsThisMonth,
         activeStaff: activeStaffCount.length,
         topMission: topMissionGroup[0]
