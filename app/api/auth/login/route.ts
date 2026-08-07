@@ -70,8 +70,8 @@ export async function POST(request: NextRequest) {
     response.cookies.set('authorize', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',        // เปลี่ยนจาก strict
-      maxAge: 7 * 24 * 60 * 60, // วินาที ไม่ใช่ ms
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/'
     });
 
