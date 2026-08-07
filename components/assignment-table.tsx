@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { IAssignment } from "@/types/assignment";
-import { ChevronDown, Trash2, Pencil } from "lucide-react"; // 👈 เพิ่ม Pencil เข้ามา
+import { ChevronDown, Trash2, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Swal from "sweetalert2";
 
@@ -61,7 +61,12 @@ const fmtShort = (date: Date | string | undefined) => {
 const isLate = (submitAt: Date | string, deadline: Date | string) =>
   new Date(submitAt) > new Date(deadline);
 
-const handleShowDetail = (assignment: IAssignment) => {
+// 👇 เพิ่ม onDuplicate: เมื่อกดปุ่ม Duplicate ใน Swal จะปิด Swal แล้วส่ง assignment
+// กลับไปให้ parent เปิด React dialog (DuplicateAssignment) ต่อ
+const handleShowDetail = (
+  assignment: IAssignment,
+  onDuplicate: (assignment: IAssignment) => void,
+) => {
   const status = (assignment.status ?? "Pending") as AssignmentStatus;
   const late = assignment.submitAt && assignment.deadline
     ? isLate(assignment.submitAt, assignment.deadline)
@@ -151,10 +156,39 @@ const handleShowDetail = (assignment: IAssignment) => {
     showCloseButton: true,
     html: `
       <div style="text-align:left;font-family:inherit;">
-        <p style="font-size:13px;color:#6b7280;margin:0 0 6px;">View full details of this assignment.</p>
-        <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;">
-          Title: ${assignment.title}
-        </h2>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+          <div>
+            <p style="font-size:13px;color:#6b7280;margin:0 0 6px;">View full details of this assignment.</p>
+            <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;">
+              Title: ${assignment.title}
+            </h2>
+          </div>
+          <button
+            id="duplicate-assignment-btn"
+            style="
+              display:flex;
+              align-items:center;
+              gap:6px;
+              white-space:nowrap;
+              background:#eff6ff;
+              color:#2563eb;
+              border:1px solid #bfdbfe;
+              padding:6px 12px;
+              border-radius:8px;
+              font-size:13px;
+              font-weight:600;
+              cursor:pointer;
+              margin-right:28px;
+            "
+            onmouseover="this.style.background='#dbeafe'"
+            onmouseout="this.style.background='#eff6ff'"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+        </div>
         <p style="font-size:13px;color:#374151;margin:0 0 20px;line-height:1.6;">
           Description: ${assignment.description ?? "-"}
         </p>
@@ -249,23 +283,31 @@ const handleShowDetail = (assignment: IAssignment) => {
           `,
         });
       });
+
+      // 👇 ปุ่ม Duplicate: ปิด Swal แล้วเรียก callback กลับไปที่ React state
+      const duplicateBtn = document.getElementById("duplicate-assignment-btn");
+      duplicateBtn?.addEventListener("click", () => {
+        Swal.close();
+        onDuplicate(assignment);
+      });
     },
   });
 };
 
-// 1. เพิ่ม onEdit เข้ามาใน Interface ของ Props
 interface AssignmentTableProps {
   assignments: IAssignment[];
   onStatusChange: (id: string, status: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
-  onEdit: (id: string) => void; // 👈 เพิ่มบรรทัดนี้
+  onEdit: (id: string) => void;
+  onDuplicate: (assignment: IAssignment) => void; // 👈 เพิ่มบรรทัดนี้
 }
 
 export default function AssignmentTable({
   assignments,
   onStatusChange,
   onDelete,
-  onEdit, // 👈 ทำการ Destructure ค่าออกมาใช้งาน
+  onEdit,
+  onDuplicate, // 👈 เพิ่มบรรทัดนี้
 }: AssignmentTableProps) {
   const handleDelete = async (id: string, title: string) => {
     const result = await Swal.fire({
@@ -305,7 +347,7 @@ export default function AssignmentTable({
               <TableRow
                 key={assignment.id}
                 className="cursor-pointer"
-                onDoubleClick={() => handleShowDetail(assignment)}
+                onDoubleClick={() => handleShowDetail(assignment, onDuplicate)}
               >
                 <TableCell className="text-center text-muted-foreground text-sm font-medium">
                   {index + 1}
@@ -358,7 +400,6 @@ export default function AssignmentTable({
 
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
-                    {/* 2. เพิ่มปุ่มแก้ไข (Edit Button) ไว้หน้าปุ่มลบ */}
                     <Button
                       variant="ghost"
                       size="icon"

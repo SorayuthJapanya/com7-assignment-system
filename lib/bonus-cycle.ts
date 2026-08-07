@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+export { BONUS_BUCKETS } from "@/lib/bonus-buckets";
 // 🔁 CHANGED: BONUS_BUCKETS now lives in lib/bonus-buckets.ts (a file with
 // zero server-only imports) so client components can import it without
 // pulling prisma/pg/dns into the browser bundle. Re-exported here too so

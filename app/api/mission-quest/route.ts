@@ -362,7 +362,7 @@ async function autoClaimUnclaimedPreviousMonth(
   const prevAvgScorePct =
     prevApproved.length > 0
       ? prevApproved.reduce((sum, a) => sum + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) /
-      prevApproved.length
+        prevApproved.length
       : 0;
 
   const prevFirstResponderCount = prevSubmitted.filter((a) => {
@@ -555,7 +555,7 @@ export async function GET(request: NextRequest) {
     const avgScorePctForPerfect =
       approvedForPerfect.length > 0
         ? approvedForPerfect.reduce((sum, a) => sum + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) /
-        approvedForPerfect.length
+          approvedForPerfect.length
         : 0;
     const perfectMonth = lateCountForPerfect === 0 && approvedForPerfect.length >= 5 && avgScorePctForPerfect >= 80;
 

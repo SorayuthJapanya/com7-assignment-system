@@ -123,13 +123,14 @@ export async function POST(
   }
 }
 
-// api/assignment/[id]/route.ts — PUT
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    // isAuthorize
     const authResult = await isAuthorize(request);
+
     if (authResult.error) {
       return NextResponse.json(
         { error: authResult.error },
@@ -140,6 +141,7 @@ export async function PUT(
     const authUser = authResult.user!;
     const assignmentId = (await params).id;
 
+    // Get existing assignment
     const existingAssignment = await prisma.assignment.findUnique({
       where: { id: assignmentId },
     });
@@ -151,9 +153,9 @@ export async function PUT(
       );
     }
 
-    const isAdminCreator =
-      authUser.role === "ADMIN" &&
-      existingAssignment.createdBy === authUser.username;
+    // Check if user has permission to update this assignment
+    // SUPER_ADMIN and the creator ADMIN can update assignments
+    const isAdminCreator = authUser.role === "ADMIN" && existingAssignment.createdBy === authUser.username;
     if (authUser.role !== "SUPER_ADMIN" && !isAdminCreator) {
       return NextResponse.json(
         { error: "You are not authorized to update this assignment" },
@@ -161,46 +163,23 @@ export async function PUT(
       );
     }
 
+    // Get body
     const body = await request.json();
     const { title, description, type, reward, deadline, status } = body;
 
-    const updateData = {
-      ...(title && { title }),
-      ...(description && { description }),
-      ...(type && { type: type as "Individual" | "Group" }),
-      ...(reward && { reward }),
-      ...(deadline && { deadline: new Date(deadline) }),
-      ...(status && { status: status as "Pending" | "Approved" | "Rejected" }),
-    };
-
-    if (existingAssignment.type === "Group") {
-      // ไม่มี groupId ตรงๆ เลยใช้ field ที่ทุก row ในกลุ่มเดียวกันมีค่าเหมือนกัน
-      // ตอนสร้าง (title, createdBy, deadline เดิม, members list) เป็นตัว match แทน
-      await prisma.assignment.updateMany({
-        where: {
-          type: "Group",
-          title: existingAssignment.title,
-          createdBy: existingAssignment.createdBy,
-          deadline: existingAssignment.deadline, // deadline ก่อนแก้ (ต้อง match กับตอนสร้าง)
-          members: { equals: existingAssignment.members }, // ทั้ง array ต้องตรงกันเป๊ะ
-        },
-        data: updateData,
-      });
-
-      const updatedAssignment = await prisma.assignment.findUnique({
-        where: { id: assignmentId },
-      });
-
-      return NextResponse.json({
-        message: "Assignment (group) updated successfully",
-        assignment: updatedAssignment,
-      });
-    }
-
-    // Individual — แก้เฉพาะ row เดิม เหมือนโค้ดเดิมทุกอย่าง
+    // Update assignment
     const updatedAssignment = await prisma.assignment.update({
       where: { id: assignmentId },
-      data: updateData,
+      data: {
+        ...(title && { title }),
+        ...(description && { description }),
+        ...(type && { type: type as "Individual" | "Group" }),
+        ...(reward && { reward }),
+        ...(deadline && { deadline: new Date(deadline) }),
+        ...(status && {
+          status: status as "Pending" | "Approved" | "Rejected",
+        }),
+      },
     });
 
     return NextResponse.json({

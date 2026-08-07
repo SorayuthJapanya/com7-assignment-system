@@ -51,7 +51,11 @@ export default function MissionQuestAdminPage() {
   const [selectedUser, setSelectedUser] = useState<{ id: string; username: string } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
-  const { data: usersData } = useGetUsers({ search: "", includeHidden: false });
+  const { data: usersData } = useGetUsers({
+  search: "",
+  includeHidden: false,
+  enabled: authUser?.role === "SUPER_ADMIN",
+});
 
   // ── KPI drilldown ──
   const [kpiScope, setKpiScope] = useState<KpiScope | null>(null);
@@ -63,25 +67,25 @@ export default function MissionQuestAdminPage() {
 
   // 🚀 ปรับวิธีดึงข้อมูลแบบคู่ขนานแบบไม่บล็อกกันเอง
   const load = useCallback(() => {
-    setLoadingData(true);
-    setLoadingLeaderboard(true);
+  setLoadingData(true);
+  setLoadingLeaderboard(true);
 
-    fetch("/api/mission-quest/admin")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((resData) => {
-        if (resData) setData(resData);
-      })
-      .catch(console.error)
-      .finally(() => setLoadingData(false));
+  fetch("/api/mission-quest/admin", { credentials: "include" })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((resData) => {
+      if (resData) setData(resData);
+    })
+    .catch(console.error)
+    .finally(() => setLoadingData(false));
 
-    fetch("/api/mission-quest")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((lbData) => {
-        if (lbData) setLeaderboardData(lbData);
-      })
-      .catch(console.error)
-      .finally(() => setLoadingLeaderboard(false));
-  }, []);
+  fetch("/api/mission-quest", { credentials: "include" })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((lbData) => {
+      if (lbData) setLeaderboardData(lbData);
+    })
+    .catch(console.error)
+    .finally(() => setLoadingLeaderboard(false));
+}, []);
 
   useEffect(() => {
     if (authUser && authUser.role !== "SUPER_ADMIN") {

@@ -15,26 +15,16 @@ export const comparePassword = async (
   return await bcrypt.compare(password, hashedPassword);
 };
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) throw new Error("JWT_SECRET is not configured");
-
 export const generateToken = (user: IUser) => {
   const token = jwt.sign(
-    { userId: user.id, username: user.username, nickname: user.nickname, role: user.role },
-    JWT_SECRET,
+    {
+      userId: user.id,
+      username: user.username,
+      nickname: user.nickname,
+      role: user.role,
+    },
+    process.env.JWT_SECRET || "fallback-secret",
     { expiresIn: "7d" },
   );
   return token;
-};
-
-export const getUserByUsername = async (username: string) => {
-  const user = await prisma.user.findUnique({
-    where: {
-      username,
-    },
-    omit: {
-      password: true,
-    },
-  });
-  return user;
 };

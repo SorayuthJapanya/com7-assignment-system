@@ -4,7 +4,7 @@ import Header from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { useState } from "react";
-import { IFilteredAssignment, IAssignment } from "@/types/assignment"; // 👈 นำเข้า IAssignment เพิ่ม
+import { IFilteredAssignment, IAssignment } from "@/types/assignment";
 import {
   useGetAssignments,
   useReviewAssignment,
@@ -14,14 +14,18 @@ import AssignmentFilter from "@/components/table/assignment-filter";
 import Pagination from "@/components/pagination";
 import AssignmentTable from "@/components/assignment-table";
 import EditAssignment from "@/components/dialog/edit-assignment";
+import DuplicateAssignment from "@/components/dialog/duplicate-assignment"; // 👈 เพิ่ม import
 import Link from "next/link";
 import { useIsSuperAdmin } from "@/hooks/use-current-user";
 
 export default function ManageAssignmentPage() {
   const { isSuperAdmin } = useIsSuperAdmin();
-  
+
   // State สำหรับควบคุมตัว Pop-up แก้ไขข้อมูล
   const [selectedAssignment, setSelectedAssignment] = useState<IAssignment | null>(null);
+
+  // 👇 State สำหรับควบคุม Pop-up Duplicate
+  const [duplicateSource, setDuplicateSource] = useState<IAssignment | null>(null);
 
   const [filtered, setFiltered] = useState<IFilteredAssignment>({
     search: "",
@@ -31,7 +35,7 @@ export default function ManageAssignmentPage() {
     limit: 15,
     myAssignments: false,
     username: "",
-    deadlineMonth: "", 
+    deadlineMonth: "",
   });
 
   const { data: assignmentsData, isLoading } = useGetAssignments(filtered);
@@ -58,7 +62,7 @@ export default function ManageAssignmentPage() {
       limit: filtered.limit,
       myAssignments: false,
       username: "",
-      deadlineMonth: "", 
+      deadlineMonth: "",
     });
   };
 
@@ -70,12 +74,16 @@ export default function ManageAssignmentPage() {
     await deleteAssignment({ id });
   };
 
-  // ฟังก์ชันรองรับการกดแก้ไข: เมื่อกดปุ่มดินสอ จะนำข้อมูล Assignment แถวนั้นมาใส่ใน State เพื่อเปิด Pop-up
   const handleEdit = (id: string) => {
     const assignmentToEdit = assignmentsData?.assignments.find((item) => item.id === id);
     if (assignmentToEdit) {
       setSelectedAssignment(assignmentToEdit);
     }
+  };
+
+  // 👇 เรียกจาก AssignmentTable เมื่อกดปุ่ม Duplicate ใน Swal detail popup
+  const handleDuplicate = (assignment: IAssignment) => {
+    setDuplicateSource(assignment);
   };
 
   return (
@@ -108,12 +116,12 @@ export default function ManageAssignmentPage() {
           <p>Loading...</p>
         ) : assignmentsData?.assignments && assignmentsData.assignments.length > 0 ? (
           <>
-            {/* 👈 ส่งต่อฟังก์ชัน handleEdit และเปิดปุ่ม Edit กลับมาทำงานตามปกติ */}
             <AssignmentTable
               assignments={assignmentsData.assignments}
               onStatusChange={handleStatusChange}
               onDelete={handleDelete}
-              onEdit={handleEdit} 
+              onEdit={handleEdit}
+              onDuplicate={handleDuplicate}
             />
             {assignmentsData.pagination &&
               assignmentsData.pagination.totalPages > 1 && (
@@ -130,10 +138,15 @@ export default function ManageAssignmentPage() {
         )}
       </div>
 
-      {/*  แทรก Component Pop-up แก้ไขข้อมูลไว้ที่ด้านล่างสุดของหน้าจอ */}
       <EditAssignment
         selectedAssignment={selectedAssignment}
         setSelectedAssignment={setSelectedAssignment}
+      />
+
+      {/* 👇 เพิ่ม Duplicate Dialog */}
+      <DuplicateAssignment
+        selectedAssignment={duplicateSource}
+        setSelectedAssignment={setDuplicateSource}
       />
     </div>
   );

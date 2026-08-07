@@ -143,13 +143,16 @@ export const useAddUser = () => {
 export const useGetUsers = ({
   search,
   includeHidden,
+  enabled = true,
 }: {
   search?: string;
   includeHidden?: boolean;
+  enabled?: boolean;
 }) => {
   return useQuery<{ data: IUser[] }>({
     queryKey: ["users", search, includeHidden],
     queryFn: () => getUsers(search, includeHidden),
+    enabled,
   });
 };
 

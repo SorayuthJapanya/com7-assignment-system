@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate token
-        const token = generateToken({
+    const token = generateToken({
       ...user,
       profileImage: user.profileImage ?? undefined,
       hiddenAt: user.hiddenAt ? user.hiddenAt.toISOString() : null, // 👈 เพิ่มการแปลงค่าตรงนี้
@@ -70,16 +70,13 @@ export async function POST(request: NextRequest) {
     response.cookies.set('authorize', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',        // เปลี่ยนจาก strict
-      maxAge: 7 * 24 * 60 * 60, // วินาที ไม่ใช่ ms
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/'
     });
 
-    // Return response
     return response;
-
   } catch (error) {
-    console.error('Login error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
