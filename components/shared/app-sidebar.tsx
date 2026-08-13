@@ -161,30 +161,35 @@ export default function AppSidebar() {
   const isSubItemActive = (url: string) => pathname === url;
 
   const filteredNavbarItems = useMemo(() => {
-    if (isIntern) {
-      return navbarItems.filter((item) => item.title === "Daily Report");
-    }
+  if (isIntern) {
+    return navbarItems.filter((item) => item.title === "Daily Report");
+  }
 
-    return navbarItems
-      .map((item) => ({
-        ...item,
-        items: item.items?.filter((sub) => {
-          if (sub.isSuperAdmin && !isSuperAdmin) return false;
-          if (sub.isAdmin && !isAdmin) return false;
-          return true;
-        }),
-      }))
-            .filter((item) => {
-        // ถ้า item ระบุทั้ง isStaffOnly และ isSuperAdmin พร้อมกัน = อนุญาตให้เห็นได้ทั้งสอง role นี้
-        if (item.isStaffOnly && item.isSuperAdmin) {
-          return authUser?.role === "STAFF" || isSuperAdmin;
-        }
-        if (item.isSuperAdmin && !isSuperAdmin) return false;
-        if (item.isAdmin && !isAdmin) return false;
-        if (item.isStaffOnly && (isSuperAdmin || isAdmin)) return false;
+  return navbarItems
+    .map((item) => ({
+      ...item,
+      items: item.items?.filter((sub) => {
+        // SuperAdmin เห็นทุกอย่าง
+        if (isSuperAdmin) return true;
+
+        if (sub.isSuperAdmin) return false;
+        if (sub.isAdmin && !isAdmin) return false;
+        if (sub.isStaffOnly && authUser?.role !== "STAFF") return false;
+
         return true;
-      });
-  }, [isSuperAdmin, isAdmin, isIntern, authUser?.role]);
+      }),
+    }))
+    .filter((item) => {
+      // SuperAdmin เห็นทุกอย่าง
+      if (isSuperAdmin) return true;
+
+      if (item.isSuperAdmin) return false;
+      if (item.isAdmin && !isAdmin) return false;
+      if (item.isStaffOnly && authUser?.role !== "STAFF") return false;
+
+      return true;
+    });
+}, [isSuperAdmin, isAdmin, isIntern, authUser?.role]);
 
   if (!mounted) return null;
 
@@ -304,7 +309,14 @@ export default function AppSidebar() {
                 }
 
                 return (
-                  <Collapsible key={item.title} asChild defaultOpen={isActive(item.url)}>
+                  <Collapsible
+                    key={item.title}
+                    asChild
+                    defaultOpen={
+                      isActive(item.url) ||
+                      item.items?.some((sub) => isSubItemActive(sub.url || ""))
+                    }
+                  >
                     <SidebarMenuItem>
                       {item.items?.length ? (
                         <>
@@ -369,53 +381,53 @@ export default function AppSidebar() {
       {/* ───── Footer ───── */}
       <SidebarFooter className="shrink-0 border-t border-sidebar-border bg-sidebar max-h-[45vh] overflow-y-auto p-0 gap-0">
 
-          {/* ───── CLOSEST MISSION Card (แทนที่ Weekly Challenge เดิม) ───── */}
-          {authUser?.role === "STAFF" && !missionsLoading && closestMission && (
-            <SidebarGroup className="px-3 pt-1 pb-2">
-              <div className="rounded-xl border p-2.5 flex flex-col gap-1.5 bg-yellow-50 border-yellow-100">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm">{closestMission.emoji}</span>
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-yellow-700">
-                    Almost There!
-                  </span>
-                </div>
-                <p className="text-[10px] text-gray-700 leading-tight font-medium">
-                  {closestMission.name} · {closestMission.progressLabel}
-                </p>
-                <div className="w-full bg-gray-200 rounded-full h-1 overflow-hidden">
-                  <div
-                    className={`h-1 rounded-full transition-all duration-500 ${PROGRESS_COLOR_MAP[closestMission.progressColor]}`}
-                    style={{ width: `${closestMission.progressPct}%` }}
-                  />
-                </div>
-                <div className="flex items-center justify-between leading-none">
-                  <span className="text-[10px] text-muted-foreground font-medium">
-                    {closestMission.progressPct}% complete
-                  </span>
-                  <span className="flex items-center gap-0.5 text-[10px] font-bold text-gray-700">
-                    🎁 +{closestMission.rewardPoints} pts
-                  </span>
-                </div>
+        {/* ───── CLOSEST MISSION Card (แทนที่ Weekly Challenge เดิม) ───── */}
+        {authUser?.role === "STAFF" && !missionsLoading && closestMission && (
+          <SidebarGroup className="px-3 pt-1 pb-2">
+            <div className="rounded-xl border p-2.5 flex flex-col gap-1.5 bg-yellow-50 border-yellow-100">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm">{closestMission.emoji}</span>
+                <span className="text-[10px] font-bold tracking-wide uppercase text-yellow-700">
+                  Almost There!
+                </span>
               </div>
-            </SidebarGroup>
-          )}
+              <p className="text-[10px] text-gray-700 leading-tight font-medium">
+                {closestMission.name} · {closestMission.progressLabel}
+              </p>
+              <div className="w-full bg-gray-200 rounded-full h-1 overflow-hidden">
+                <div
+                  className={`h-1 rounded-full transition-all duration-500 ${PROGRESS_COLOR_MAP[closestMission.progressColor]}`}
+                  style={{ width: `${closestMission.progressPct}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between leading-none">
+                <span className="text-[10px] text-muted-foreground font-medium">
+                  {closestMission.progressPct}% complete
+                </span>
+                <span className="flex items-center gap-0.5 text-[10px] font-bold text-gray-700">
+                  🎁 +{closestMission.rewardPoints} pts
+                </span>
+              </div>
+            </div>
+          </SidebarGroup>
+        )}
 
-          {/* ───── Fallback: ทำ mission ครบทุกอันแล้ว ───── */}
-          {authUser?.role === "STAFF" && !missionsLoading && !closestMission && (
-            <SidebarGroup className="px-3 pt-1 pb-2">
-              <div className="rounded-xl border p-2.5 flex flex-col gap-1.5 bg-green-50 border-green-200">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm">🏆</span>
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-green-700">
-                    All Missions Done!
-                  </span>
-                </div>
-                <p className="text-[10px] text-gray-700 leading-tight font-medium">
-                  เก่งมาก! ทำภารกิจครบทุกอันแล้ว 🎉
-                </p>
+        {/* ───── Fallback: ทำ mission ครบทุกอันแล้ว ───── */}
+        {authUser?.role === "STAFF" && !missionsLoading && !closestMission && (
+          <SidebarGroup className="px-3 pt-1 pb-2">
+            <div className="rounded-xl border p-2.5 flex flex-col gap-1.5 bg-green-50 border-green-200">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm">🏆</span>
+                <span className="text-[10px] font-bold tracking-wide uppercase text-green-700">
+                  All Missions Done!
+                </span>
               </div>
-            </SidebarGroup>
-          )}
+              <p className="text-[10px] text-gray-700 leading-tight font-medium">
+                เก่งมาก! ทำภารกิจครบทุกอันแล้ว 🎉
+              </p>
+            </div>
+          </SidebarGroup>
+        )}
 
       </SidebarFooter>
 

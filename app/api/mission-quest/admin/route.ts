@@ -22,7 +22,6 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     // Filter Where Objects
@@ -36,65 +35,12 @@ export async function GET(request: NextRequest) {
     };
     if (userId) overdueWhere.recipient_id = userId;
 
-    // 🎯 FIX: รวม claimsToday (count) + pointsToday (sum) เข้าเป็น aggregate
-    // เดียวกัน เพราะทั้งคู่ query ตาราง missionClaim ด้วย where เดียวกัน
-    // (claimedAt >= todayStart) — เดิมเป็น 2 queries แยกกัน ลดเหลือ 1 query
-    // ผลลัพธ์ที่ได้ (จำนวน claim วันนี้ + คะแนนรวมวันนี้) เหมือนเดิมทุกประการ
-    //
-    // รัน Query ทั้งหมดขนานกันใน Promise.all
     const [
-      todayAgg,
-      claimsThisMonth,
-      activeStaffCount,
-      topMissionGroup,
-      overdueToday,
-      overdueThisMonth,
       claims,
       totalClaims,
       overdueRows,
       missionSummary,
     ] = await Promise.all([
-      prisma.missionClaim.aggregate({
-        where: { claimedAt: { gte: todayStart } },
-        _count: true,
-        _sum: { points: true },
-      }),
-
-      prisma.missionClaim.count({ where: { claimedAt: { gte: monthStart } } }),
-
-      prisma.missionClaim.groupBy({
-        by: ["userId"],
-        where: { claimedAt: { gte: monthStart } },
-      }),
-
-      prisma.missionClaim.groupBy({
-        by: ["missionId"],
-        where: { claimedAt: { gte: monthStart } },
-        _count: { missionId: true },
-        orderBy: { _count: { missionId: "desc" } },
-        take: 1,
-      }),
-
-      prisma.score.aggregate({
-        where: {
-          reviewer: "Overdue Deduction",
-          assignment_title: "Redeem overdue minutes",
-          createdAt: { gte: todayStart },
-        },
-        _sum: { score: true },
-        _count: true,
-      }),
-
-      prisma.score.aggregate({
-        where: {
-          reviewer: "Overdue Deduction",
-          assignment_title: "Redeem overdue minutes",
-          createdAt: { gte: monthStart },
-        },
-        _sum: { score: true },
-        _count: true,
-      }),
-
       prisma.missionClaim.findMany({
         where: claimWhere,
         orderBy: { claimedAt: "desc" },
@@ -131,27 +77,7 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    const claimsToday = todayAgg._count;
-    const pointsToday = todayAgg._sum.points ?? 0;
-
     return NextResponse.json({
-      kpi: {
-        claimsToday,
-        pointsToday,
-        claimsThisMonth,
-        activeStaff: activeStaffCount.length,
-        topMission: topMissionGroup[0]
-          ? {
-              missionId: topMissionGroup[0].missionId,
-              count: topMissionGroup[0]._count.missionId,
-            }
-          : null,
-        overduePointsToday: Math.abs(overdueToday._sum.score ?? 0),
-        overdueCountToday: overdueToday._count,
-        overduePointsThisMonth: Math.abs(overdueThisMonth._sum.score ?? 0),
-        overdueCountThisMonth: overdueThisMonth._count,
-        overdueMinutesThisMonth: Math.abs(overdueThisMonth._sum.score ?? 0) * 5,
-      },
       claims: claims.map((c) => ({
         id: c.id,
         userId: c.userId,
@@ -189,7 +115,14 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error("Admin mission-quest error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Admin mission-quest error:", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      code: (error as { code?: string }).code,
+    });
+    return NextResponse.json(
+      { error: "Mission Quest admin is temporarily unavailable" },
+      { status: 503 },
+    );
   }
 }

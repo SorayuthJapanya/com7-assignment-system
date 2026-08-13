@@ -36,24 +36,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isIntern = user?.role === "INTERN";
 
   useEffect(() => {
-    // Only run on client side
-    const initAuth = () => {
+    let isMounted = true;
+
+    const clearCachedUser = () => {
+      localStorage.removeItem("authUser");
+      sessionStorage.removeItem("authUser");
+    };
+
+    const initAuth = async () => {
+      let cachedUser: AuthUser | null = null;
       try {
         const authUserStr = localStorage.getItem("authUser") || sessionStorage.getItem("authUser");
         if (authUserStr) {
-          const parsedUser = JSON.parse(authUserStr);
-          setUser(parsedUser);
+          cachedUser = JSON.parse(authUserStr) as AuthUser;
         }
       } catch (error) {
         console.error("Failed to parse auth user:", error);
-        localStorage.removeItem("authUser");
-        sessionStorage.removeItem("authUser");
+        clearCachedUser();
+      }
+
+      try {
+        const response = await fetch("/api/auth/me", {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!isMounted) return;
+
+        if (response.ok) {
+          const body = await response.json();
+          const authenticatedUser = body.data as AuthUser;
+          setUser(authenticatedUser);
+          localStorage.setItem("authUser", JSON.stringify(authenticatedUser));
+        } else if (response.status === 401) {
+          clearCachedUser();
+          setUser(null);
+        } else {
+          // Keep the cached profile during a temporary server/database outage.
+          setUser(cachedUser);
+        }
+      } catch (error) {
+        console.error("Failed to validate auth session:", error);
+        if (isMounted) setUser(cachedUser);
       } finally {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     };
 
     initAuth();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleSetUser = (newUser: AuthUser | null) => {
@@ -62,12 +95,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("authUser", JSON.stringify(newUser));
     } else {
       localStorage.removeItem("authUser");
+      sessionStorage.removeItem("authUser");
     }
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem("authUser");
+    sessionStorage.removeItem("authUser");
   };
 
   return (

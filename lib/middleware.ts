@@ -10,12 +10,17 @@ export async function isAuthorize(request: NextRequest) {
     return { error: "Unauthorize", status: 401 };
   }
 
+  let decoded: JWTPayload;
   try {
-    const decoded = jwt.verify(
+    decoded = jwt.verify(
       token,
       process.env.JWT_SECRET || "fallback-secret",
     ) as JWTPayload;
+  } catch {
+    return { error: "Unauthorize", status: 401 };
+  }
 
+  try {
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
     });
@@ -25,7 +30,8 @@ export async function isAuthorize(request: NextRequest) {
     }
 
     return { user, error: null };
-  } catch {
-    return { error: "Unauthorize", status: 401 };
+  } catch (error) {
+    console.error("Authentication database error:", error);
+    return { error: "Authentication service unavailable", status: 503 };
   }
 }

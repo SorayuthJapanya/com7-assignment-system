@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import type { MissionQuestResponse } from "@/types/mission-quest";
 import { MOCK_MISSION_QUEST } from "@/lib/mission-quest-mock";
 import MissionSection from "@/components/mission-quest/mission-section";
-import EarlyBirdBonusTable from "@/components/mission-quest/early-bird-bonus-table";
 import RewardBanner from "@/components/mission-quest/reward-banner";
 import MissionCharts from "@/components/mission-quest/mission-charts";
 import { ShieldAlert, AlertTriangle, History, X } from "lucide-react";
@@ -257,12 +256,6 @@ export default function MissionQuestPage() {
       )}
 
       <RewardBanner summary={data.summary} />
-
-      <EarlyBirdBonusTable
-        data={data.bonusTable}
-        kpis={data.kpis}
-        onResetSuccess={() => load({ silent: true })}
-      />
 
       {data.sections.map((section) => (
         <MissionSection

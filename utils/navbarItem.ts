@@ -1,4 +1,4 @@
-import { FileText, LayoutDashboard, Users, Trophy, Settings2, Calendar, LucideIcon, Target  } from "lucide-react";
+import { FileText, LayoutDashboard, Users, Trophy, Settings2, Calendar, LucideIcon, Target, ShieldCheck } from "lucide-react";
 
 export type NavbarItem = {
     title: string;
@@ -58,23 +58,36 @@ export const navbarItems: NavbarItem[] = [
         isSuperAdmin: false,
     },
     {
-        title: "User Management",
-        url: "/user-management",
-        icon: Users,
-        isSuperAdmin: true,
-    },
+    title: "Mission & Quest",
+    icon: Target,
+    isStaffOnly: true,                 // ← มีแค่ตัวนี้
+    items: [
+        {
+            title: "Mission Board",
+            url: "/mission-quest",
+            isStaffOnly: true,
+        },
+        {
+            title: "Early Bird Leaderboard",
+            url: "/mission-quest/leaderboard",
+            isStaffOnly: true,
+        },
+    ],
+},
     {
-        title: "Level Management",
-        url: "/level-management",
-        icon: Settings2,
+        title: "Admin Menu",
+        icon: ShieldCheck,
         isSuperAdmin: true,
+        items: [
+            {
+                title: "User Management",
+                url: "/user-management",
+            },
+            {
+                title: "Level Management",
+                url: "/level-management",
+            },
+        ],
     },
 
-    {
-        title: "Mission & Quest",
-        url: "/mission-quest",
-        icon: Target,
-        isStaffOnly: true, 
-        isSuperAdmin: true,
-    },
 ]

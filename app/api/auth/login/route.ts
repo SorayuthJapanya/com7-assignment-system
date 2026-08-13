@@ -1,4 +1,4 @@
-import { comparePassword, generateToken } from '@/lib/auth';
+import { AUTH_COOKIE_MAX_AGE_SECONDS, comparePassword, generateToken } from '@/lib/auth';
 import { prisma } from '../../../../lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
       path: '/'
     });
 

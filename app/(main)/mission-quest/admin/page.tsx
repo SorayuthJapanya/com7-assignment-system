@@ -5,97 +5,30 @@ import { useAuthUser } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
 import { ShieldAlert, User, ChevronDown, Check } from "lucide-react";
 import { useGetUsers } from "@/hooks/use-auth";
-import dynamic from "next/dynamic";
-import AdminKpiCards, { type KpiScope } from "./admin-kpi-cards";
 import StaffDetailView from "./staff-detail-view";
-import EarlyBirdBonusTable from "@/components/mission-quest/early-bird-bonus-table";
-import type { MissionQuestResponse } from "@/types/mission-quest";
-
-// 🚀 Dynamic Import สำหรับ Component ที่ไม่ได้ใช้ทันที เพื่อลด Initial Bundle Size
-const KpiDrilldownPanel = dynamic(() => import("./kpi-drilldown-panel"), {
-  ssr: false,
-});
 
 type UserOption = { id: string; username: string; nickname: string; role: string };
-
-type AdminData = {
-  kpi: {
-    claimsToday: number;
-    pointsToday: number;
-    claimsThisMonth: number;
-    activeStaff: number;
-    topMission: { missionId: string; count: number } | null;
-    overduePointsToday: number;
-    overdueCountToday: number;
-    overduePointsThisMonth: number;
-    overdueCountThisMonth: number;
-    overdueMinutesThisMonth: number;
-  };
-  claims: any[];
-  overdue: any[];
-  pagination: { page: number; limit: number; total: number; totalPages: number };
-  missionSummary: { missionId: string; claimCount: number; totalPoints: number }[];
-};
 
 export default function MissionQuestAdminPage() {
   const authUser = useAuthUser();
   const router = useRouter();
-  const [data, setData] = useState<AdminData | null>(null);
-  const [leaderboardData, setLeaderboardData] = useState<MissionQuestResponse | null>(null);
-  
-  // 🚀 แยก Loading state เพื่อให้ส่วนที่มาถึงก่อนสามารถแสดงผลได้ทันที
-  const [loadingData, setLoadingData] = useState(true);
-  const [loadingLeaderboard, setLoadingLeaderboard] = useState(true);
 
   // ── เลือกดู Mission Board ของ staff คนไหน ──
   const [selectedUser, setSelectedUser] = useState<{ id: string; username: string } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const { data: usersData } = useGetUsers({
-  search: "",
-  includeHidden: false,
-  enabled: authUser?.role === "SUPER_ADMIN",
-});
-
-  // ── KPI drilldown ──
-  const [kpiScope, setKpiScope] = useState<KpiScope | null>(null);
-  const [detailUser, setDetailUser] = useState<{
-    userId: string;
-    username: string;
-    nickname: string;
-  } | null>(null);
-
-  // 🚀 ปรับวิธีดึงข้อมูลแบบคู่ขนานแบบไม่บล็อกกันเอง
-  const load = useCallback(() => {
-  setLoadingData(true);
-  setLoadingLeaderboard(true);
-
-  fetch("/api/mission-quest/admin", { credentials: "include" })
-    .then((res) => (res.ok ? res.json() : null))
-    .then((resData) => {
-      if (resData) setData(resData);
-    })
-    .catch(console.error)
-    .finally(() => setLoadingData(false));
-
-  fetch("/api/mission-quest", { credentials: "include" })
-    .then((res) => (res.ok ? res.json() : null))
-    .then((lbData) => {
-      if (lbData) setLeaderboardData(lbData);
-    })
-    .catch(console.error)
-    .finally(() => setLoadingLeaderboard(false));
-}, []);
+    search: "",
+    includeHidden: false,
+    enabled: authUser?.role === "SUPER_ADMIN",
+  });
 
   useEffect(() => {
     if (authUser && authUser.role !== "SUPER_ADMIN") {
       router.replace("/mission-quest");
-      return;
     }
-    if (authUser?.role === "SUPER_ADMIN") load();
-  }, [authUser, router, load]);
+  }, [authUser, router]);
 
-  // 🚀 ผูก Event listener เฉพาะตอนที่ Dropdown เปิดอยู่ เพื่อลด Memory & CPU Consumption
   useEffect(() => {
     if (!isOpen) return;
 
@@ -155,106 +88,60 @@ export default function MissionQuestAdminPage() {
         <div>
           <h1 className="text-xl font-bold text-slate-900">Mission Quest Admin</h1>
           <p className="text-sm text-slate-500 mt-1">
-            ภาพรวมการ Claim และแต้มที่ใช้กับ Overdue
+            ภาพรวมตารางคะแนนและสถานะประจำวัน
           </p>
         </div>
 
-        <div ref={dropdownRef} className="relative w-full md:w-64">
-          <button
-            type="button"
-            onClick={() => setIsOpen((v) => !v)}
-            className="w-full flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            <span className="flex items-center gap-2">
-              <User className="size-4 text-slate-400" />
-              <span className="font-medium">Username</span>
-            </span>
-            <ChevronDown
-              className={`size-4 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
-            />
-          </button>
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <div ref={dropdownRef} className="relative w-full md:w-64">
+            <button
+              type="button"
+              onClick={() => setIsOpen((v) => !v)}
+              className="w-full flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <span className="flex items-center gap-2">
+                <User className="size-4 text-slate-400" />
+                <span className="font-medium">Username</span>
+              </span>
+              <ChevronDown
+                className={`size-4 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+              />
+            </button>
 
-          {isOpen && (
-            <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg overflow-hidden">
-              <div className="px-3 py-2 text-xs font-semibold text-slate-400 border-b border-slate-100">
-                Username
-              </div>
-              <div className="max-h-64 overflow-y-auto">
-                <button
-                  type="button"
-                  onClick={handleSelectAll}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm hover:bg-slate-50 border-b border-slate-50"
-                >
-                  <span className="flex items-center justify-center size-4 rounded-full border border-slate-700 bg-slate-700">
-                    <Check className="size-2.5 text-white" strokeWidth={3} />
-                  </span>
-                  <span className="font-medium text-slate-700">All</span>
-                </button>
-
-                {sortedUsers.map((u) => (
+            {isOpen && (
+              <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg overflow-hidden">
+                <div className="px-3 py-2 text-xs font-semibold text-slate-400 border-b border-slate-100">
+                  Username
+                </div>
+                <div className="max-h-64 overflow-y-auto">
                   <button
-                    key={u.id}
                     type="button"
-                    onClick={() => handleSelectUser(u.id, u.username)}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm hover:bg-slate-50 border-b border-slate-50 last:border-0"
+                    onClick={handleSelectAll}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm hover:bg-slate-50 border-b border-slate-50"
                   >
-                    <span className="flex items-center justify-center size-4 rounded-full border border-slate-300 shrink-0" />
-                    <span className="text-slate-700">{u.username}</span>
+                    <span className="flex items-center justify-center size-4 rounded-full border border-slate-700 bg-slate-700">
+                      <Check className="size-2.5 text-white" strokeWidth={3} />
+                    </span>
+                    <span className="font-medium text-slate-700">All</span>
                   </button>
-                ))}
+
+                  {sortedUsers.map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => handleSelectUser(u.id, u.username)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm hover:bg-slate-50 border-b border-slate-50 last:border-0"
+                    >
+                      <span className="flex items-center justify-center size-4 rounded-full border border-slate-300 shrink-0" />
+                      <span className="text-slate-700">{u.username}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
-
-      {/* 🚀 เรนเดอร์ KPI ตามสถานะ โหลดก่อนมาแสดงก่อน */}
-      {loadingData || !data ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
-          ))}
-        </div>
-      ) : (
-        <AdminKpiCards
-          kpi={data.kpi}
-          onSelect={(scope) => {
-            if (!scope?.kind) return;
-            setKpiScope(scope);
-            setDetailUser(null);
-          }}
-        />
-      )}
-
-      {/* 🚀 เรนเดอร์ Bonus Table ทันทีที่ API ข้อมูลฝั่ง Leaderboard ตอบกลับมา */}
-      {loadingLeaderboard ? (
-        <div className="h-48 rounded-xl bg-muted animate-pulse" />
-      ) : (
-        leaderboardData?.bonusTable && (
-          <EarlyBirdBonusTable
-            data={leaderboardData.bonusTable}
-            kpis={leaderboardData.kpis}
-            onResetSuccess={load}
-          />
-        )
-      )}
-
-      {kpiScope != null && data && (
-        <KpiDrilldownPanel
-          scope={kpiScope}
-          claims={data.claims ?? []}
-          overdue={data.overdue ?? []}
-          detailUser={detailUser}
-          onSelectUser={(u: { userId: string; username: string; nickname: string }) =>
-            setDetailUser(u)
-          }
-          onBackToPeople={() => setDetailUser(null)}
-          onClose={() => {
-            setKpiScope(null);
-            setDetailUser(null);
-          }}
-        />
-      )}
     </div>
   );
 }

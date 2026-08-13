@@ -21,8 +21,6 @@ import {
   getConsistencyProStreak,
 } from "@/lib/mission-shared";
 
-const AUTO_CLAIM_DEPLOY_START = MISSION_TRACKING_START;
-
 function pct(current: number, target: number) {
   return target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
 }
@@ -127,10 +125,8 @@ async function getBonusLeaderboard(cycleStart: Date, now: Date): Promise<any[]> 
     };
 
     const [scoreGroups, claimsByUser] = await Promise.all([
-      // 🎯 FIX: ไม่นับคะแนนที่มาจาก Mission Quest claim เข้าไปใน Early Bird bonus
+      // ไม่นับคะแนนที่มาจาก Mission Quest claim เข้าไปใน Early Bird bonus
       // คะแนนของ Mission ถูกสร้างด้วย reviewer: "System (Mission Quest)"
-      // (ดู autoClaimUnclaimedPreviousMonth ด้านล่าง และ redeem/route.ts)
-      // ต้องตัดออก ให้ bonusEarned/totalPoints นับเฉพาะคะแนนจาก Assignment review เท่านั้น
       prisma.score.groupBy({
         by: ["recipient_id"],
         where: {
@@ -321,130 +317,6 @@ async function getLevelUpWindowState(userId: string, now: Date) {
   return { completed: leveledUp, currentIdx: safeCurrentIdx, windowStart: win.windowStart, levels };
 }
 
-// 🎯 FIX: เพิ่ม parameter prevAssignments รับข้อมูลที่ query ไว้แล้วจาก caller
-// แทนที่จะ query prisma.assignment.findMany ซ้ำอีกรอบ (เดือนเดียวกัน, user เดียวกัน
-// กับที่ main GET handler query อยู่แล้วด้านล่าง) — ลด 1 query ต่อ request
-// Logic การคำนวณเงื่อนไข mission ทุกตัวเหมือนเดิมทุกประการ
-async function autoClaimUnclaimedPreviousMonth(
-  userId: string,
-  nickname: string,
-  username: string,
-  prevMonthStart: Date,
-  prevMonthEnd: Date,
-  prevMonthNum: number,
-  prevYearNum: number,
-  prevAssignments: Awaited<ReturnType<typeof prisma.assignment.findMany>>,
-) {
-  if (prevMonthEnd < MISSION_TRACKING_START) return;
-  if (prevMonthStart < AUTO_CLAIM_DEPLOY_START) return;
-
-  const prevPrevMonthStart = clampStart(new Date(prevMonthStart.getFullYear(), prevMonthStart.getMonth() - 1, 1));
-  const prevPrevMonthEnd = new Date(prevMonthStart.getFullYear(), prevMonthStart.getMonth(), 0, 23, 59, 59);
-
-  const [
-    prevReviewedCount,
-    prevConsistencyStreak,
-    prevPrevAssignments,
-  ] = await Promise.all([
-    prisma.dailyReport.count({
-      where: {
-        reviewedBy: username,
-        status: { in: ["Approved", "Rejected"] },
-        updatedAt: { gte: prevMonthStart, lte: prevMonthEnd },
-        user: { role: "INTERN" },
-      },
-    }),
-    safeGetConsistencyStreak(username, prevMonthEnd, 8, prevMonthStart),
-    prisma.assignment.findMany({
-      where: { userId, deadline: { gte: prevPrevMonthStart, lte: prevPrevMonthEnd } },
-    }),
-  ]);
-
-  const prevSubmitted = prevAssignments.filter((a) => a.status !== "Pending");
-  const prevApproved = prevAssignments.filter((a) => a.status === "Approved");
-  const prevRejected = prevAssignments.filter((a) => a.status === "Rejected");
-  const prevLateCount = prevSubmitted.filter((a) => a.submitAt && a.submitAt > a.deadline).length;
-
-  const prevAvgScorePct =
-    prevApproved.length > 0
-      ? prevApproved.reduce((sum, a) => sum + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) /
-        prevApproved.length
-      : 0;
-
-  const prevFirstResponderCount = prevSubmitted.filter((a) => {
-    if (!a.submitAt) return false;
-    const diffHours = (a.submitAt.getTime() - a.createdAt.getTime()) / (1000 * 60 * 60);
-    return diffHours >= 0 && diffHours <= 24;
-  }).length;
-
-  const prevQualityKingCurrent = prevApproved.filter(
-    (a) => a.reward > 0 && a.finalScore / a.reward >= 0.85,
-  ).length;
-
-  const prevHasBacklog = prevAssignments.some((a) => {
-    const isUnsubmittedPending = !a.submitAt && a.status === "Pending";
-    const isOlderThan3Days = (prevMonthEnd.getTime() - a.createdAt.getTime()) > THREE_DAYS_MS;
-    return isUnsubmittedPending && isOlderThan3Days;
-  });
-
-  const prevActiveOrSubmittedForNoBacklog = prevAssignments.filter(
-    (a) => a.submitAt || a.status === "Approved",
-  );
-
-  const prevPrevSubmitted = prevPrevAssignments.filter((a) => a.status !== "Pending");
-  const prevPrevLateCount = prevPrevSubmitted.filter((a) => a.submitAt && a.submitAt > a.deadline).length;
-  const comebackKidCompleted = prevPrevLateCount >= 3 && prevLateCount === 0;
-
-  const finalStates: { id: string; isCompleted: boolean; rewardPoints: number; name: string }[] = [
-    { id: "speed-runner", isCompleted: prevApproved.filter((a) => a.submitAt && a.submitAt <= a.deadline).length >= 10, rewardPoints: 1500, name: "Speed Runner" },
-    { id: "perfect-month", isCompleted: prevLateCount === 0 && prevApproved.length >= 5 && prevAvgScorePct >= 80, rewardPoints: 1500, name: "Perfect Month" },
-    { id: "first-responder", isCompleted: prevFirstResponderCount >= 3, rewardPoints: 500, name: "First Responder" },
-    { id: "quality-king", isCompleted: prevQualityKingCurrent >= 8, rewardPoints: 1000, name: "Quality King" },
-    { id: "zero-reject", isCompleted: prevAssignments.length > 0 && prevRejected.length === 0, rewardPoints: 500, name: "Zero Reject" },
-    { id: "workaholic", isCompleted: prevApproved.length >= 15, rewardPoints: 2000, name: "Workaholic" },
-    { id: "report-pro", isCompleted: prevReviewedCount > 20, rewardPoints: 300, name: "20+ Reviews" },
-    { id: "no-backlog", isCompleted: prevActiveOrSubmittedForNoBacklog.length >= 2 && !prevHasBacklog, rewardPoints: 1000, name: "No Backlog" },
-    { id: "consistency-pro", isCompleted: prevConsistencyStreak >= 8, rewardPoints: 1000, name: "8-Week Streak" },
-    { id: "comeback-kid", isCompleted: comebackKidCompleted, rewardPoints: 500, name: "Comeback Kid" },
-  ];
-
-  const existingClaims = await prisma.missionClaim.findMany({
-    where: { userId, month: prevMonthNum, year: prevYearNum },
-    select: { missionId: true },
-  });
-  const alreadyClaimedIds = new Set(existingClaims.map((c) => c.missionId));
-
-  for (const m of finalStates) {
-    if (!m.isCompleted) continue;
-    if (alreadyClaimedIds.has(m.id)) continue;
-
-    try {
-      await prisma.$transaction(async (tx) => {
-        await tx.missionClaim.create({
-          data: {
-            userId,
-            missionId: m.id,
-            month: prevMonthNum,
-            year: prevYearNum,
-            points: m.rewardPoints,
-          },
-        });
-
-        await tx.score.create({
-          data: {
-            recipient_id: userId,
-            reviewer: "System (Mission Quest)",
-            assignment_title: `Mission Reward (Auto-claim): ${m.id}`,
-            score: m.rewardPoints,
-          },
-        });
-      });
-    } catch (err) {
-      console.error(`Auto-claim failed for mission ${m.id}, userId ${userId}:`, err);
-    }
-  }
-}
-
 export async function GET(request: NextRequest) {
   try {
     const authResult = await isAuthorize(request);
@@ -489,23 +361,12 @@ export async function GET(request: NextRequest) {
     const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
     const daysLeft = Math.ceil((monthEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-    // 🎯 FIX: query prevMonthAssignments ครั้งเดียว แล้วใช้ร่วมกันทั้งใน
-    // autoClaimUnclaimedPreviousMonth และในการคำนวณ comebackKid ด้านล่าง
-    // (เดิม query 2 รอบสำหรับข้อมูลชุดเดียวกัน)
+    // 🎯 หมายเหตุ: autoClaimUnclaimedPreviousMonth ถูกลบออกแล้วตามคำขอ
+    // (เดิม query ชุดนี้ถูกใช้ร่วมกันทั้ง auto-claim และคำนวณ Zero Reject/Comeback Kid
+    // ด้านล่าง — ตอนนี้เหลือใช้แค่คำนวณ mission เท่านั้น)
     const prevMonthAssignments = await prisma.assignment.findMany({
       where: { userId: targetUserId, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
     });
-
-    await autoClaimUnclaimedPreviousMonth(
-      targetUserId,
-      targetNickname,
-      targetUsername,
-      prevMonthStart,
-      prevMonthEnd,
-      prevMonthStart.getMonth() + 1,
-      prevMonthStart.getFullYear(),
-      prevMonthAssignments,
-    );
 
     const currentMonthNum = now.getMonth() + 1;
     const currentYearNum = now.getFullYear();
@@ -863,7 +724,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error("Mission quest route error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Mission quest route error:", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      code: (error as { code?: string }).code,
+    });
+    return NextResponse.json(
+      { error: "Mission Quest is temporarily unavailable" },
+      { status: 503 },
+    );
   }
 }
