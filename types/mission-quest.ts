@@ -112,7 +112,7 @@ export interface MissionProgressChartPoint {
 export interface MissionQuestResponse {
   kpis: MissionQuestKpis;
   sections: MissionSectionData[];
-  bonusTable: BonusTableData;
+  bonusTable?: BonusTableData; // optional: mission-quest/route.ts ไม่ส่งแล้ว (ย้ายไป early-bird-leaderboard route)
   summary: MissionQuestSummary;
   categoryChart: MissionCategoryChartPoint[];
   progressChart: MissionProgressChartPoint[];
