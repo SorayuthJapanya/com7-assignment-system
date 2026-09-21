@@ -43,7 +43,7 @@ async function getLevelUpWindowState(userId: string, now: Date) {
   const currentIdx = levels.length > 0
     ? levels.findIndex((l) => totalScore >= l.minScore && totalScore <= l.maxScore)
     : 0;
-  const safeCurrentIdx = currentIdx < 0 ? 0 : currentIdx;
+  const safeCurrentIdx = currentIdx < 0 ? Math.max(0, levels.length - 1) : currentIdx;
 
   let win = await prisma.missionWindow.findUnique({
     where: { userId_missionId: { userId, missionId: "level-up" } },
@@ -142,6 +142,7 @@ export async function GET(request: NextRequest) {
       monthAssignments,
       levelUpState,
       isZeroRejectClaimed,
+      lastConsistencyClaim,
     ] = await Promise.all([
       prisma.missionClaim.findMany({
         where: { userId: targetUserId, month: currentMonthNum, year: currentYearNum },
@@ -158,6 +159,13 @@ export async function GET(request: NextRequest) {
           month: prevMonthStart.getMonth() + 1,
           year: prevMonthStart.getFullYear(),
         },
+      }),
+      // FIX: 8-Week Streak is a cross-month streak. Look up the most recent
+      // claim EVER (not just this month) so the UI and the redeem route
+      // (which does the same lookup) count from the same starting point.
+      prisma.missionClaim.findFirst({
+        where: { userId: targetUserId, missionId: "consistency-pro" },
+        orderBy: { claimedAt: "desc" },
       }),
     ]);
 
@@ -190,7 +198,7 @@ export async function GET(request: NextRequest) {
     const avgScorePctForPerfect =
       approvedForPerfect.length > 0
         ? approvedForPerfect.reduce((sum, a) => sum + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) /
-          approvedForPerfect.length
+        approvedForPerfect.length
         : 0;
     const perfectMonth = lateCountForPerfect === 0 && approvedForPerfect.length >= 5 && avgScorePctForPerfect >= 80;
 
@@ -218,13 +226,10 @@ export async function GET(request: NextRequest) {
     const workaholicTarget = 15;
 
     const consistencyTarget = 8;
-    function streakCycleStartOf(missionId: string): Date {
-      const claimedAt = lastClaimedAtMap.get(missionId);
-      if (claimedAt && claimedAt > MISSION_TRACKING_START) return claimedAt;
-      return MISSION_TRACKING_START;
-    }
-
-    const consistencyProCycleStart = streakCycleStartOf("consistency-pro");
+    const consistencyProCycleStart =
+      lastConsistencyClaim && lastConsistencyClaim.claimedAt > MISSION_TRACKING_START
+        ? lastConsistencyClaim.claimedAt
+        : MISSION_TRACKING_START;
     const reportProCycleStart = cycleStartOf("report-pro");
 
     const [speedRunnerAssignments, consistencyProCurrent, reviewedCount] = await Promise.all([

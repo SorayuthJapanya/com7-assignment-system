@@ -19,10 +19,25 @@ function lockKeyFor(userId: string, missionId: string): bigint {
   return hash.readBigInt64BE(0);
 }
 
+/**
+ * หา index ของ level จากคะแนนรวม — ใช้ fallback เดียวกับ GET route
+ * (คะแนนไม่อยู่ในช่วงใดเลย => ถือว่าเป็น level สูงสุด)
+ * แนะนำให้ย้ายไป lib/mission-shared.ts แล้วให้ GET import ไปใช้ร่วมกัน
+ */
+function resolveLevelIdx(
+  levels: { minScore: number; maxScore: number }[],
+  totalScore: number,
+): number {
+  if (levels.length === 0) return 0;
+  const idx = levels.findIndex((l) => totalScore >= l.minScore && totalScore <= l.maxScore);
+  return idx < 0 ? levels.length - 1 : idx;
+}
+
 async function checkMissionCompleted(
   tx: PrismaTx,
   userId: string,
   nickname: string,
+  username: string,
   missionId: string,
 ): Promise<{ completed: boolean; rewardPoints: number; recordMonth: number; recordYear: number }> {
   const now = new Date();
@@ -34,11 +49,8 @@ async function checkMissionCompleted(
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
   // Default: the claim record belongs to the current month/year.
-  // zero-reject is the one exception (see below) — it evaluates PREVIOUS
-  // month's data, so its record must be keyed to the previous month/year to
-  // match how the auto-claim route (GET) keys the same claim. Previously
-  // these two routes disagreed, which could cause double-payouts or
-  // incorrectly blocked claims.
+  // zero-reject is the exception — it evaluates PREVIOUS month's data, so its
+  // record must be keyed to the previous month/year.
   let recordMonth = currentMonth;
   let recordYear = currentYear;
 
@@ -53,12 +65,8 @@ async function checkMissionCompleted(
     }
   }
 
-  // consistency-pro is a cross-month streak, not a monthly quota — its lower
-  // bound must NOT default to monthStart, or every un-claimed streak gets
-  // silently truncated at the 1st of the calendar month. We look up the
-  // most recent claim EVER (not scoped to current month/year) so a streak
-  // that started last month is still respected. Mirrors streakCycleStartOf()
-  // in mission-quest/route.ts (GET) — keep both in sync if this changes.
+  // consistency-pro is a cross-month streak — look up the most recent claim
+  // EVER (not scoped to month/year). Mirrors streakCycleStartOf() in the GET route.
   let consistencyCycleStart = MISSION_TRACKING_START;
   if (missionId === "consistency-pro") {
     const lastConsistencyClaim = await tx.missionClaim.findFirst({
@@ -70,11 +78,7 @@ async function checkMissionCompleted(
     }
   }
 
-  // 🎯 FIX: เปลี่ยนจาก eager query (query monthAssignments ทุกครั้งไม่ว่า mission
-  // ที่กำลัง claim จะใช้หรือไม่) เป็น lazy fetch + memoize — query แค่ตอนที่
-  // case นั้นต้องใช้จริงเท่านั้น และ query ซ้ำแค่ครั้งเดียวถ้าถูกเรียกหลายจุด
-  // ภายใน case เดียวกัน (เช่น perfect-month ใช้ทั้ง approved และ submitted)
-  // Logic การคำนวณเงื่อนไขแต่ละ mission เหมือนเดิมทุกประการ
+  // Lazy fetch + memoize: query monthAssignments only when a case needs it.
   let _monthAssignments: Awaited<ReturnType<typeof tx.assignment.findMany>> | null = null;
   const getMonthAssignments = async () => {
     if (_monthAssignments === null) {
@@ -86,8 +90,9 @@ async function checkMissionCompleted(
   };
   const getSubmitted = async () => (await getMonthAssignments()).filter((a) => a.status !== "Pending");
   const getApproved = async () => (await getMonthAssignments()).filter((a) => a.status === "Approved");
+  // null-safe: same as GET (submitAt may be null)
   const getLateCount = async () =>
-    (await getSubmitted()).filter((a) => a.submitAt > a.deadline).length;
+    (await getSubmitted()).filter((a) => a.submitAt && a.submitAt > a.deadline).length;
 
   switch (missionId) {
     case "speed-runner": {
@@ -96,10 +101,10 @@ async function checkMissionCompleted(
       const speedRunnerAssignments = await tx.assignment.findMany({
         where: { userId, status: "Approved", deadline: { gte: effectiveStart, lte: monthEnd } },
       });
-      // FIX: also require updatedAt >= cycleStart so assignments approved
-      // BEFORE the last reset-claim can't be re-counted toward a new cycle.
+      // updatedAt >= cycleStart so assignments approved BEFORE the last
+      // reset-claim can't be re-counted toward a new cycle.
       const count = speedRunnerAssignments.filter(
-        (a) => a.submitAt <= a.deadline && a.updatedAt >= cycleStart,
+        (a) => a.submitAt && a.submitAt <= a.deadline && a.updatedAt >= cycleStart,
       ).length;
       return { completed: count >= 10, rewardPoints: 1500, recordMonth, recordYear };
     }
@@ -107,13 +112,13 @@ async function checkMissionCompleted(
     case "perfect-month": {
       const approved = await getApproved();
       const submitted = await getSubmitted();
-      // FIX: added updatedAt >= cycleStart, matching the GET route.
       const approvedInCycle = approved.filter((a) => a.deadline >= cycleStart && a.updatedAt >= cycleStart);
       const submittedInCycle = submitted.filter((a) => a.deadline >= cycleStart);
-      const lateInCycle = submittedInCycle.filter((a) => a.submitAt > a.deadline).length;
+      const lateInCycle = submittedInCycle.filter((a) => a.submitAt && a.submitAt > a.deadline).length;
       const avgScorePct =
         approvedInCycle.length > 0
-          ? approvedInCycle.reduce((s, a) => s + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) / approvedInCycle.length
+          ? approvedInCycle.reduce((s, a) => s + (a.reward ? (a.finalScore / a.reward) * 100 : 0), 0) /
+            approvedInCycle.length
           : 0;
       return {
         completed: lateInCycle === 0 && approvedInCycle.length >= 5 && avgScorePct >= 80,
@@ -125,11 +130,8 @@ async function checkMissionCompleted(
 
     case "first-responder": {
       const submitted = await getSubmitted();
-      // FIX: also require submitAt >= cycleStart (not just deadline), matching GET.
-      // Otherwise a submission already counted in a prior cycle could be
-      // recounted after a reset-claim as long as its deadline happened to
-      // fall on/after the new cycleStart.
       const count = submitted.filter((a) => {
+        if (!a.submitAt) return false;
         if (a.deadline < cycleStart || a.submitAt < cycleStart) return false;
         const diffHours = (a.submitAt.getTime() - a.createdAt.getTime()) / (1000 * 60 * 60);
         return diffHours >= 0 && diffHours <= 24;
@@ -139,28 +141,24 @@ async function checkMissionCompleted(
 
     case "quality-king": {
       const approved = await getApproved();
-      // FIX: added updatedAt >= cycleStart.
       const count = approved.filter(
-        (a) => a.deadline >= cycleStart && a.updatedAt >= cycleStart && a.reward > 0 && a.finalScore / a.reward >= 0.85,
+        (a) =>
+          a.deadline >= cycleStart &&
+          a.updatedAt >= cycleStart &&
+          a.reward > 0 &&
+          a.finalScore / a.reward >= 0.85,
       ).length;
       return { completed: count >= 8, rewardPoints: 1000, recordMonth, recordYear };
     }
 
     case "zero-reject": {
-      // ไม่แตะ monthAssignments เลย — ไม่ query เกินความจำเป็น
       const prevAssignments = await tx.assignment.findMany({
         where: { userId, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
       });
       const prevRejected = prevAssignments.filter((a) => a.status === "Rejected");
       const hasAssignments = prevAssignments.length > 0;
       const isCompleted = hasAssignments && prevRejected.length === 0;
-      // FIX: this mission evaluates the PREVIOUS month, so its claim record
-      // must be keyed to the previous month/year — same as the auto-claim
-      // logic in the GET route. Previously this used the current month/year,
-      // which meant a manual claim and an auto-claim for the same underlying
-      // month result could each pass the "already claimed?" check and pay
-      // out twice, or a manual claim in month N could block the legitimate
-      // auto-claim for month N-1 by occupying an unrelated key.
+      // Evaluates the PREVIOUS month => key the claim to the previous month/year.
       recordMonth = prevMonthStart.getMonth() + 1;
       recordYear = prevMonthStart.getFullYear();
       return { completed: isCompleted, rewardPoints: 500, recordMonth, recordYear };
@@ -168,34 +166,34 @@ async function checkMissionCompleted(
 
     case "workaholic": {
       const approved = await getApproved();
-      // FIX: added updatedAt >= cycleStart.
       const count = approved.filter((a) => a.deadline >= cycleStart && a.updatedAt >= cycleStart).length;
       return { completed: count >= 15, rewardPoints: 2000, recordMonth, recordYear };
     }
 
     case "consistency-pro": {
-      // ไม่แตะ monthAssignments เลย
-      // FIX: use consistencyCycleStart (not the monthly cycleStart) so a
-      // streak that started before this calendar month isn't silently
-      // truncated at the 1st. See comment above where it's computed.
-      const streak = await getConsistencyProStreak(tx as any, nickname, now, 8, consistencyCycleStart);
+      // FIX: GET passes `username` — redeem must too (was `nickname`).
+      const streak = await getConsistencyProStreak(tx as any, username, now, 8, consistencyCycleStart);
       return { completed: streak >= 8, rewardPoints: 1000, recordMonth, recordYear };
     }
 
     case "report-pro": {
-      // ไม่แตะ monthAssignments เลย
-      const reviewedCount = await tx.score.count({
-        where: { reviewer: nickname, createdAt: { gte: cycleStart, lte: monthEnd } },
+      // FIX: count from the SAME table/filters as the GET route
+      // (dailyReport + reviewedBy: username + Approved/Rejected + INTERN),
+      // previously counted `score` rows by nickname => mismatch with the UI.
+      const reviewedCount = await tx.dailyReport.count({
+        where: {
+          reviewedBy: username,
+          status: { in: ["Approved", "Rejected"] },
+          updatedAt: { gte: cycleStart, lte: monthEnd },
+          user: { role: "INTERN" },
+        },
       });
       return { completed: reviewedCount > 20, rewardPoints: 300, recordMonth, recordYear };
     }
 
-    // No Backlog: claimable once per calendar month only (NOT in
-    // RESETTABLE_MISSION_IDS — see lib/mission-shared.ts comment). Requires
-    // >= 2 submitted/approved assignments and no pending assignment older
-    // than 3 days.
+    // No Backlog: claimable once per calendar month only (NOT resettable).
     case "no-backlog": {
-      const monthAssignments = await getMonthAssignments();
+      const monthAssignments = (await getMonthAssignments()).filter((a) => a.createdAt >= monthStart);
       const activeOrSubmitted = monthAssignments.filter((a) => a.submitAt || a.status === "Approved");
       const hasBacklog = monthAssignments.some((a) => {
         const isUnsubmittedPending = !a.submitAt && a.status === "Pending";
@@ -212,11 +210,11 @@ async function checkMissionCompleted(
     }
 
     case "level-up": {
-      // ไม่แตะ monthAssignments เลย
       const levels = await tx.level.findMany({ orderBy: { minScore: "asc" } });
       const agg = await tx.score.aggregate({ where: { recipient_id: userId }, _sum: { score: true } });
-      const totalScore = agg._sum.score ?? 0;
-      const currentIdx = levels.findIndex((l) => totalScore >= l.minScore && totalScore <= l.maxScore);
+      // FIX: same total + fallback as GET (Math.max(0,…) and resolveLevelIdx)
+      const totalScore = Math.max(0, agg._sum.score ?? 0);
+      const currentIdx = resolveLevelIdx(levels, totalScore);
 
       const win = await tx.missionWindow.findUnique({
         where: { userId_missionId: { userId, missionId: "level-up" } },
@@ -224,10 +222,14 @@ async function checkMissionCompleted(
 
       if (!win) return { completed: false, rewardPoints: 1000, recordMonth, recordYear };
 
-      const expired = now.getTime() - win.windowStart.getTime() > LEVEL_UP_WINDOW_MS_LOCAL;
+      // FIX: GET treats "leveled up" as completed even if the window is past
+      // 14 days (it only resets the window when expired AND not leveled up).
+      // Redeem previously also required !expired, so the UI showed "done" but
+      // Claim was rejected. Now both sides use the same rule.
+      void LEVEL_UP_WINDOW_MS_LOCAL;
       const leveledUp = currentIdx > win.referenceLevelIdx;
 
-      return { completed: !expired && leveledUp, rewardPoints: 1000, recordMonth, recordYear };
+      return { completed: leveledUp, rewardPoints: 1000, recordMonth, recordYear };
     }
 
     case "comeback-kid": {
@@ -236,7 +238,7 @@ async function checkMissionCompleted(
         where: { userId, deadline: { gte: prevMonthStart, lte: prevMonthEnd } },
       });
       const prevSubmitted = prevAssignments.filter((a) => a.status !== "Pending");
-      const prevLateCount = prevSubmitted.filter((a) => a.submitAt > a.deadline).length;
+      const prevLateCount = prevSubmitted.filter((a) => a.submitAt && a.submitAt > a.deadline).length;
       return { completed: prevLateCount >= 3 && lateCount === 0, rewardPoints: 500, recordMonth, recordYear };
     }
 
@@ -262,9 +264,6 @@ export async function POST(request: NextRequest) {
     if (!missionId) {
       return NextResponse.json({ error: "missionId is required." }, { status: 400 });
     }
-    // FIX: validate missionId against the known list instead of silently
-    // falling through to the default { completed: false } case, which made
-    // typos indistinguishable from "not yet completed" in the API response.
     if (!VALID_MISSION_IDS.has(missionId)) {
       return NextResponse.json({ error: `Unknown missionId: ${missionId}` }, { status: 400 });
     }
@@ -280,13 +279,11 @@ export async function POST(request: NextRequest) {
         tx,
         authUser.id,
         authUser.nickname,
+        authUser.username, // FIX: pass username (used by report-pro & consistency-pro)
         missionId,
       );
 
-      // Non-resettable missions (e.g. no-backlog, zero-reject, comeback-kid)
-      // may only be claimed once per their record month/year. Checked AFTER
-      // computing recordMonth/recordYear so zero-reject is checked against
-      // the previous month, matching how it was evaluated.
+      // Non-resettable missions may only be claimed once per record month/year.
       if (!RESETTABLE_MISSION_IDS.has(missionId)) {
         const alreadyClaimedThisMonth = await tx.missionClaim.findFirst({
           where: { userId: authUser.id, missionId, month: recordMonth, year: recordYear },
@@ -300,6 +297,11 @@ export async function POST(request: NextRequest) {
         return { ok: false as const };
       }
 
+      // MissionClaim stays ONE row per (user, mission, month, year) — it is
+      // only used to track the latest claimedAt (cycle start) and to block
+      // duplicate claims. No schema migration needed. The per-claim history
+      // shown to users is read from the Score table instead (one row is
+      // created there on every claim, see below + claim-history route).
       const existing = await tx.missionClaim.findFirst({
         where: { userId: authUser.id, missionId, month: recordMonth, year: recordYear },
       });
@@ -307,27 +309,11 @@ export async function POST(request: NextRequest) {
       if (existing) {
         await tx.missionClaim.update({
           where: { id: existing.id },
-          data: {
-            points: existing.points + rewardPoints,
-            claimedAt: now,
-          },
+          data: { points: existing.points + rewardPoints, claimedAt: now },
         });
       } else {
         await tx.missionClaim.create({
           data: { userId: authUser.id, missionId, month: recordMonth, year: recordYear, points: rewardPoints },
-        });
-      }
-
-      if (missionId === "level-up") {
-        const levels = await tx.level.findMany({ orderBy: { minScore: "asc" } });
-        const agg = await tx.score.aggregate({ where: { recipient_id: authUser.id }, _sum: { score: true } });
-        const totalScore = (agg._sum.score ?? 0) + rewardPoints;
-        const newIdx = levels.findIndex((l) => totalScore >= l.minScore && totalScore <= l.maxScore);
-
-        await tx.missionWindow.upsert({
-          where: { userId_missionId: { userId: authUser.id, missionId: "level-up" } },
-          create: { userId: authUser.id, missionId: "level-up", windowStart: now, referenceLevelIdx: newIdx },
-          update: { windowStart: now, referenceLevelIdx: newIdx },
         });
       }
 
@@ -339,6 +325,20 @@ export async function POST(request: NextRequest) {
           score: rewardPoints,
         },
       });
+
+      // FIX: reset the level-up window AFTER the reward score is created so the
+      // baseline level reflects the real total score (what GET will compute).
+      if (missionId === "level-up") {
+        const levels = await tx.level.findMany({ orderBy: { minScore: "asc" } });
+        const agg = await tx.score.aggregate({ where: { recipient_id: authUser.id }, _sum: { score: true } });
+        const newIdx = resolveLevelIdx(levels, Math.max(0, agg._sum.score ?? 0));
+
+        await tx.missionWindow.upsert({
+          where: { userId_missionId: { userId: authUser.id, missionId: "level-up" } },
+          create: { userId: authUser.id, missionId: "level-up", windowStart: now, referenceLevelIdx: newIdx },
+          update: { windowStart: now, referenceLevelIdx: newIdx },
+        });
+      }
 
       return { ok: true as const, rewardPoints };
     });
