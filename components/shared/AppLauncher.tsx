@@ -25,6 +25,8 @@ const initialApps = [
   { id: "vacancy_project", name: "Vacancy HQ/Branch/Project", icon: "/icons8-google-sheets-96 (1).png", url: "https://docs.google.com/spreadsheets/d/19jV0tEPp483wGKaqNXe63JUJI2tPnKsPoTvyQpzuUzg/edit?usp=drive_web&ouid=100085330486160439309" },
   { id: "benefit", name: "Benefit Sheet", icon: "/icons8-google-sheets-96 (1).png", url: "-" },
   { id: "new_asset", name: "เบิกทรัพย์สินพนักงานใหม่", icon: "/icons8-google-sheets-96 (1).png", url: "https://docs.google.com/spreadsheets/d/1cs7mv2gW4iSVoAjuFsvn0qmFpoungZzMe3-DIK8wZUk/edit?usp=drive_web&ouid=100085330486160439309" },
+  { id: "onboarding", name: "Onboarding", icon: "/icons8-onboarding.png", url: "https://com7-stock-requisition-system.vercel.app/" },
+  { id: "nextstep", name: "NextStep", icon: "/icons8-nextstep-evaluation.png", url: "https://com7-nextstep.vercel.app/admin/login" },
 ];
 
 export default function AppLauncher() {
