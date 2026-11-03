@@ -46,6 +46,7 @@ export default function DuplicateAssignment({
   setSelectedAssignment,
 }: DuplicateAssignmentProps) {
   const { mutateAsync: createAssignment, isPending } = useCreateAssignment();
+  const currentYear = new Date().getFullYear();
   // includeHidden: false → ให้ backend กรองคนที่ถูกซ่อนออกให้ตั้งแต่ query
   // (กันซ้ำอีกชั้นด้วย .isHidden ด้านล่าง เผื่อ backend ยังไม่กรองให้)
   const { data: queryData } = useGetUsers({ search: "", includeHidden: false });
@@ -284,6 +285,8 @@ export default function DuplicateAssignment({
                         }
                       }}
                       captionLayout="dropdown"
+                      fromYear={currentYear - 5}
+                      toYear={currentYear + 2}
                       defaultMonth={deadline || new Date()}
                     />
                     <div className="space-y-1.5 p-4 bg-gray-50/30">
